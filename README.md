@@ -2,7 +2,7 @@
 
 This is the core python library package that serves as a foundation for pve cloud.
 
-## alembic orm
+## Alembic orm
 
 This project uses sqlalchemy + alembic integrated into the collection for management of the patroni database schema.
 
