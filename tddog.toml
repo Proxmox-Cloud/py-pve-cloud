@@ -1,0 +1,20 @@
+[build]
+build_commands = [
+  [
+    "rm", "-rf", "dist/"
+  ],
+  [
+    "python", "-m", "build"
+  ],
+  [
+    "twine", "upload", "--repository-url", "http://$REGISTRY_IP:8088/",
+    "--username", "doesnt", "--password", "matter",
+    "dist/py_pve_cloud-$VERSION.tar.gz", "dist/py_pve_cloud-$VERSION-py3-none-any.whl"
+  ]
+]
+version_py_path = "src/pve_cloud/_version.py"
+
+[redis]
+version_key = "version.py-pve-cloud"
+sub_rebuild_keys = []
+env_key_mapping = {}
