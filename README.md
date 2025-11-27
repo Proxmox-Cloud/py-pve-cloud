@@ -19,3 +19,4 @@ export PG_CONN_STR=postgresql+psycopg2://postgres:$PATRONI_PASS@$PROXY_IP:5000/p
 ```
 
 To create a new migration the database needs to be on the latest version, run `alembic upgrade head` to upgrade it.
+
