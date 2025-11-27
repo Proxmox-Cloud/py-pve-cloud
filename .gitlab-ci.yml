@@ -8,45 +8,42 @@ release_tag:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
   resource_group: deploy-prod
 
-    
-# # called by curl post, could also be called manually but creating
-# # release-patch... is much easier
-# publish_pypi:
-#   stage: deploy
-#   image:
-#     name: python:alpine3.19
-#   script:
-#     # install base packages for publishing
-#     - pip install build==1.3.0 twine==6.2.0
-#     - echo "__version__ = \"$CI_COMMIT_TAG\"" > src/pve_cloud/_version.py # dynamic versioning
-#     - python3 -m build
-#     - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
-#     - sleep 300 # dont exit the pipeline until pypi index is updated (really slow) => downstream wont find the version otherwise
-#     # todo: implement offline boostrap / self hosted registry approach
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+# called by curl post, could also be called manually but creating
+# release-patch... is much easier
+publish_pypi:
+  stage: deploy
+  image:
+    name: python:alpine3.19
+  script:
+    # install base packages for publishing
+    - pip install build==1.3.0 twine==6.2.0
+    - echo "__version__ = \"$CI_COMMIT_TAG\"" > src/pve_cloud/_version.py # dynamic versioning
+    - python3 -m build
+    - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
+    - sleep 300 # dont exit the pipeline until pypi index is updated (really slow) => downstream wont find the version otherwise
+    # todo: implement offline boostrap / self hosted registry approach
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
+# after building here we trigger downstream pipelines now
+downstream_controller:
+  stage: deploy
+  needs:
+    - publish_pypi
+  trigger:
+    project: "pve-cloud/pve-cloud-controller"
+  variables:
+    PY_PVE_CLOUD: $CI_COMMIT_TAG
+    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release (fuck gitlab premium feature needed to pass env)
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
-# # after building here we trigger downstream pipelines now
-# downstream_controller:
-#   stage: deploy
-#   needs:
-#     - publish_pypi
-#   trigger:
-#     project: "pve-cloud/pve-cloud-controller"
-#   variables:
-#     PY_PVE_CLOUD: $CI_COMMIT_TAG
-#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release (fuck gitlab premium feature needed to pass env)
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-
-
-# downstream_pve_cloud:
-#   stage: deploy
-#   trigger:
-#     project: "pve-cloud/pve_cloud"
-#   variables:
-#     PY_PVE_CLOUD: $CI_COMMIT_TAG
-#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release (fuck gitlab premium feature needed to pass env)
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+downstream_pve_cloud:
+  stage: deploy
+  trigger:
+    project: "pve-cloud/pve_cloud"
+  variables:
+    PY_PVE_CLOUD: $CI_COMMIT_TAG
+    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release (fuck gitlab premium feature needed to pass env)
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
