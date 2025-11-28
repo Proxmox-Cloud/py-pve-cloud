@@ -10,6 +10,10 @@ build_commands = [
     "twine", "upload", "--repository-url", "http://$REGISTRY_IP:8088/",
     "--username", "doesnt", "--password", "matter",
     "dist/py_pve_cloud-$VERSION.tar.gz", "dist/py_pve_cloud-$VERSION-py3-none-any.whl"
+  ],
+  # install into local venv
+  [
+    "pip", "install", "-e", "."
   ]
 ]
 version_py_path = "src/pve_cloud/_version.py"
