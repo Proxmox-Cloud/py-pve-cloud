@@ -34,7 +34,7 @@ def get_cloud_domain(target_pve):
     raise RuntimeError("Could not get cloud domain via avahi mdns!")
 
 
-def get_pve_inventory(pve_cloud_domain):
+def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
     # call avahi-browse -rpt _pxc._tcp and find online host matching pve cloud domain
     # connect via ssh and fetch all other hosts via proxmox api => build inventory
     avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
@@ -66,7 +66,8 @@ def get_pve_inventory(pve_cloud_domain):
             
             # main pve cloud inventory
             if cloud_domain == pve_cloud_domain and cluster_name not in cloud_domain_first_hosts:
-                raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
+                if not skip_py_cloud_validation:
+                    raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
 
                 cloud_domain_first_hosts[cluster_name] = host_ip
             
