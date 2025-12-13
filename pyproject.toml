@@ -28,4 +28,4 @@ version = {attr = "pve_cloud._version.__version__"}
 pvclu = "pve_cloud.cli.pvclu:main"
 pvcli = "pve_cloud.cli.pvcli:main"
 
-
+mkdocs-requirements

@@ -1,46 +1,26 @@
 import argparse
-import yaml
-import os 
+import yaml 
 import socket
 import paramiko
 import dns.resolver
 import base64
 import re
+from pve_cloud.lib.inventory import *
 
 
-def get_cloud_domain(target_pve):
-  with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
-    pve_inventory = yaml.safe_load(f)
-
-  for pve_cloud in pve_inventory:
-    for pve_cluster in pve_inventory[pve_cloud]:
-      if pve_cluster + "." + pve_cloud == target_pve:
-        return pve_cloud
-  
-  raise Exception(f"Could not identify cloud domain for {target_pve}")
-
-
-def get_cld_domain_prsr(args):
-  print(f"export PVE_CLOUD_DOMAIN='{get_cloud_domain(args.target_pve)}'")
-
-
-def get_online_pve_host(target_pve):
-  with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
-    pve_inventory = yaml.safe_load(f)
-
-  for pve_cloud in pve_inventory:
-    for pve_cluster in pve_inventory[pve_cloud]:
-      if pve_cluster + "." + pve_cloud == target_pve:
-        for pve_host in pve_inventory[pve_cloud][pve_cluster]:
-          # check if host is available
-          pve_host_ip = pve_inventory[pve_cloud][pve_cluster][pve_host]["ansible_host"]
-          try:
-              with socket.create_connection((pve_host_ip, 22), timeout=3):
-                  return pve_host_ip
-          except Exception as e:
-              # debug
-              print(e, type(e))
-              pass
+def get_online_pve_host(pve_inventory, cloud_domain, target_pve):
+  for pve_cluster in pve_inventory:
+    if pve_cluster + "." + cloud_domain == target_pve:
+      for pve_host in pve_inventory[pve_cluster]:
+        # check if host is available
+        pve_host_ip = pve_inventory[pve_cluster][pve_host]["ansible_host"]
+        try:
+            with socket.create_connection((pve_host_ip, 22), timeout=3):
+                return pve_host_ip
+        except Exception as e:
+            # debug
+            print(e, type(e))
+            pass
   
   raise Exception(f"Could not find online pve host for {target_pve}")
 
@@ -95,8 +75,10 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 
 
 def export_envr(args):
-  ansible_host = get_online_pve_host(args.target_pve)
   cloud_domain = get_cloud_domain(args.target_pve)
+  pve_inventory = get_pve_inventory(cloud_domain)
+  ansible_host = get_online_pve_host(pve_inventory, cloud_domain, args.target_pve)
+  
   cluster_vars, patroni_pass, bind_internal_key = get_cloud_env(ansible_host)
   print(f"export PVE_ANSIBLE_HOST='{ansible_host}'")
   print(f"export PVE_CLOUD_DOMAIN='{cloud_domain}'")
@@ -110,6 +92,10 @@ def export_envr(args):
   print(f"export TF_VAR_master_b64_kubeconf='{base64.b64encode(get_ssh_master_kubeconfig(cluster_vars, args.stack_name).encode('utf-8')).decode('utf-8')}'")
   print(f"export TF_VAR_bind_master_ip='{cluster_vars['bind_master_ip']}'")
   print(f"export TF_VAR_bind_internal_key='{bind_internal_key}'")
+
+  # pve inventory gets converted as b64 yaml string
+  pve_64 = yaml.safe_dump(pve_inventory)
+  print(f"export TF_VAR_pve_inventory_b64='{base64.b64encode(pve_64.encode('utf-8')).decode('utf-8')}'")
 
   
 def main():
