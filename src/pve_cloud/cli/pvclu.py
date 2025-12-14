@@ -105,10 +105,6 @@ def main():
 
   subparsers = parser.add_subparsers(dest="command", required=True)
 
-  get_cld_domain_parser = subparsers.add_parser("get-cloud-domain", help="Get the cloud domain of a pve cluster.", parents=[base_parser])
-  get_cld_domain_parser.add_argument("--target-pve", type=str, help="The target pve cluster to get the cloud domain of.", required=True)
-  get_cld_domain_parser .set_defaults(func=get_cld_domain_prsr)
-
   export_envr_parser = subparsers.add_parser("export-envrc", help="Export variables for k8s .envrc", parents=[base_parser])
   export_envr_parser.add_argument("--target-pve", type=str, help="The target pve cluster.", required=True)
   export_envr_parser.add_argument("--stack-name", type=str, help="Stack name of the deployment.", required=True)
