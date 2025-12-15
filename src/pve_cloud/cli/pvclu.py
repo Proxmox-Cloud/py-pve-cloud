@@ -50,7 +50,9 @@ def get_cloud_env(pve_host):
 
 
 def get_online_pve_host_prsr(args):
-  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(args.target_pve)}'")
+  cloud_domain = get_cloud_domain(args.target_pve)
+  pve_inventory = get_pve_inventory(cloud_domain)
+  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(pve_inventory, cloud_domain, args.target_pve)}'")
 
 
 def get_ssh_master_kubeconfig(cluster_vars, stack_name):
