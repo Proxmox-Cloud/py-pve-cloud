@@ -2,6 +2,7 @@ import subprocess
 from proxmoxer import ProxmoxAPI
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 
+
 def get_cloud_domain(target_pve):
     avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
     services = avahi_disc.stdout.splitlines()
@@ -11,7 +12,6 @@ def get_cloud_domain(target_pve):
         if service.startswith("="):
             # avahi service def
             svc_args = service.split(";")
-            host_ip = svc_args[7]
 
             cloud_domain = None
             cluster_name = None
@@ -34,6 +34,40 @@ def get_cloud_domain(target_pve):
     raise RuntimeError("Could not get cloud domain via avahi mdns!")
 
 
+
+def get_online_pve_host(target_pve):
+    avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
+    services = avahi_disc.stdout.splitlines()
+
+    for service in services:
+        if service.startswith("="):
+            # avahi service def
+            svc_args = service.split(";")
+            host_ip = svc_args[7]
+
+            cloud_domain = None
+            cluster_name = None
+
+            for txt_arg in svc_args[9].split():
+                txt_arg = txt_arg.replace('"', '')
+                if txt_arg.startswith("cloud_domain"):
+                    cloud_domain = txt_arg.split("=")[1]
+
+                if txt_arg.startswith("cluster_name"):
+                    cluster_name = txt_arg.split("=")[1]
+
+            if not cloud_domain or not cluster_name:
+                raise ValueError(f"Missconfigured proxmox cloud avahi service: {service}")
+            
+            # main pve cloud inventory
+            if f"{cluster_name}.{cloud_domain}" == target_pve:
+                raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
+
+                return host_ip
+    
+    raise RuntimeError(f"No online host found for {target_pve}!")
+
+
 def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
     # call avahi-browse -rpt _pxc._tcp and find online host matching pve cloud domain
     # connect via ssh and fetch all other hosts via proxmox api => build inventory
@@ -41,6 +75,8 @@ def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
     services = avahi_disc.stdout.splitlines()
 
     pve_inventory = {}
+
+    py_pve_cloud_performed_version_checks = set()
 
     # find cloud domain hosts and get first online per proxmox cluster
     cloud_domain_first_hosts = {}
@@ -66,8 +102,9 @@ def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
             
             # main pve cloud inventory
             if cloud_domain == pve_cloud_domain and cluster_name not in cloud_domain_first_hosts:
-                if not skip_py_cloud_validation:
+                if not skip_py_cloud_validation and f"{cluster_name}.{cloud_domain}" not in py_pve_cloud_performed_version_checks:
                     raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
+                    py_pve_cloud_performed_version_checks.add(f"{cluster_name}.{cloud_domain}") # perform version check only once per cluster
 
                 cloud_domain_first_hosts[cluster_name] = host_ip
             

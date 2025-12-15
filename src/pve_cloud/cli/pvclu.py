@@ -1,28 +1,11 @@
 import argparse
 import yaml 
-import socket
+import pprint
 import paramiko
 import dns.resolver
 import base64
 import re
 from pve_cloud.lib.inventory import *
-
-
-def get_online_pve_host(pve_inventory, cloud_domain, target_pve):
-  for pve_cluster in pve_inventory:
-    if pve_cluster + "." + cloud_domain == target_pve:
-      for pve_host in pve_inventory[pve_cluster]:
-        # check if host is available
-        pve_host_ip = pve_inventory[pve_cluster][pve_host]["ansible_host"]
-        try:
-            with socket.create_connection((pve_host_ip, 22), timeout=3):
-                return pve_host_ip
-        except Exception as e:
-            # debug
-            print(e, type(e))
-            pass
-  
-  raise Exception(f"Could not find online pve host for {target_pve}")
 
 
 def get_cloud_env(pve_host):
@@ -50,9 +33,7 @@ def get_cloud_env(pve_host):
 
 
 def get_online_pve_host_prsr(args):
-  cloud_domain = get_cloud_domain(args.target_pve)
-  pve_inventory = get_pve_inventory(cloud_domain)
-  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(pve_inventory, cloud_domain, args.target_pve)}'")
+  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(args.target_pve)}'")
 
 
 def get_ssh_master_kubeconfig(cluster_vars, stack_name):
@@ -79,8 +60,16 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 def export_envr(args):
   cloud_domain = get_cloud_domain(args.target_pve)
   pve_inventory = get_pve_inventory(cloud_domain)
-  ansible_host = get_online_pve_host(pve_inventory, cloud_domain, args.target_pve)
-  
+
+  # get ansible ip for first host in target cluster
+  ansible_host = None
+  for cluster in pve_inventory:
+    if args.target_pve.startswith(cluster):
+      ansible_host = next(iter(pve_inventory[cluster].values()))["ansible_host"]
+
+  if not ansible_host:
+    raise RuntimeError(f"Could not find online host for {args.target_pve}!")
+
   cluster_vars, patroni_pass, bind_internal_key = get_cloud_env(ansible_host)
   print(f"export PVE_ANSIBLE_HOST='{ansible_host}'")
   print(f"export PVE_CLOUD_DOMAIN='{cloud_domain}'")
