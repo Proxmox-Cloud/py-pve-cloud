@@ -54,7 +54,17 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
   # since we need root we cant use sftp and root via ssh is disabled
   _, stdout, _ = ssh.exec_command("sudo cat /etc/kubernetes/admin.conf")
 
-  return stdout.read().decode('utf-8').replace("https://127.0.0.1:6443", f"https://{ddns_ips[0]}:6443")
+  admin_conf = yaml.safe_load(stdout.read().decode('utf-8'))
+  # rewrite variables for external access
+  admin_conf["clusters"][0]["cluster"]["server"] = f"https://{ddns_ips[0]}:6443"
+  admin_conf["clusters"][0]["name"] = stack_name
+
+  admin_conf["contexts"][0]["context"]["cluster"] = stack_name
+  admin_conf["contexts"][0]["name"] = f"kubernetes-admin@{stack_name}"
+
+  admin_conf["current-context"] =  f"kubernetes-admin@{stack_name}"
+
+  return yaml.safe_dump(admin_conf)
 
 
 def export_envr(args):
