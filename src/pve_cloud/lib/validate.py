@@ -17,4 +17,4 @@ def raise_on_py_cloud_missmatch(proxmox_host):
         return
   
     if cluster_vars["py_pve_cloud_version"] != pve_cloud._version.__version__:
-        raise RuntimeError(f"Version missmatch! py_pve_cloud_version for cluster is {cluster_vars["py_pve_cloud_version"]}, while you are using {pve_cloud._version.__version__}")
+        raise RuntimeError(f"Version missmatch! py_pve_cloud_version for cluster is {cluster_vars['py_pve_cloud_version']}, while you are using {pve_cloud._version.__version__}")
