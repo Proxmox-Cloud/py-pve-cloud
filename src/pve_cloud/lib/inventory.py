@@ -4,6 +4,7 @@ from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 import shutil
 import yaml
 import os
+import socket
 
 
 def get_cloud_domain(target_pve, suppress_warnings = False):
@@ -51,7 +52,7 @@ def get_cloud_domain(target_pve, suppress_warnings = False):
         raise Exception(f"Could not identify cloud domain for {target_pve}")
 
 
-def get_online_pve_host(target_pve, suppress_warnings = False):
+def get_online_pve_host(target_pve, suppress_warnings = False, skip_py_cloud_check=False):
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
         services = avahi_disc.stdout.splitlines()
@@ -78,7 +79,8 @@ def get_online_pve_host(target_pve, suppress_warnings = False):
                 
                 # main pve cloud inventory
                 if f"{cluster_name}.{cloud_domain}" == target_pve:
-                    raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
+                    if not skip_py_cloud_check:
+                        raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
 
                     return host_ip
         
@@ -107,7 +109,7 @@ def get_online_pve_host(target_pve, suppress_warnings = False):
         raise RuntimeError(f"Could not find online pve host for {target_pve}")
 
 
-def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False, suppress_warnings = False):
+def get_pve_inventory(pve_cloud_domain, suppress_warnings = False, skip_py_cloud_check=False):
     if shutil.which("avahi-browse"):
         # avahi is available
 
@@ -144,13 +146,14 @@ def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False, suppre
                 
                 # main pve cloud inventory
                 if cloud_domain == pve_cloud_domain and cluster_name not in cloud_domain_first_hosts:
-                    if not skip_py_cloud_validation and f"{cluster_name}.{cloud_domain}" not in py_pve_cloud_performed_version_checks:
+                    if not skip_py_cloud_check and f"{cluster_name}.{cloud_domain}" not in py_pve_cloud_performed_version_checks:
                         raise_on_py_cloud_missmatch(host_ip) # validate that versions of dev machine and running on cluster match
                         py_pve_cloud_performed_version_checks.add(f"{cluster_name}.{cloud_domain}") # perform version check only once per cluster
 
                     cloud_domain_first_hosts[cluster_name] = host_ip
                 
         # iterate over hosts and build pve inv via proxmox api
+        # todo: this needs to be hugely optimized it blocks the grpc server
         for cluster_first, first_host in cloud_domain_first_hosts.items():
             proxmox = ProxmoxAPI(
                 first_host, user="root", backend='ssh_paramiko'

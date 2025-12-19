@@ -8,6 +8,20 @@ import re
 from pve_cloud.lib.inventory import *
 
 
+def get_cluster_vars(pve_host):
+  ssh = paramiko.SSHClient()
+  ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+  ssh.connect(pve_host, username="root")
+
+  # since we need root we cant use sftp and root via ssh is disabled
+  _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
+
+  cluster_vars = yaml.safe_load(stdout.read().decode('utf-8'))
+
+  return cluster_vars
+
+
 def get_cloud_env(pve_host):
   ssh = paramiko.SSHClient()
   ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
