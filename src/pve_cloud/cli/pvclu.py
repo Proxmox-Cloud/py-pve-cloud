@@ -33,7 +33,7 @@ def get_cloud_env(pve_host):
 
 
 def get_online_pve_host_prsr(args):
-  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(args.target_pve)}'")
+  print(f"export PVE_ANSIBLE_HOST='{get_online_pve_host(args.target_pve, suppress_warnings=True)}'")
 
 
 def get_ssh_master_kubeconfig(cluster_vars, stack_name):
@@ -68,8 +68,8 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 
 
 def export_envr(args):
-  cloud_domain = get_cloud_domain(args.target_pve)
-  pve_inventory = get_pve_inventory(cloud_domain)
+  cloud_domain = get_cloud_domain(args.target_pve, suppress_warnings=True)
+  pve_inventory = get_pve_inventory(cloud_domain, suppress_warnings=True)
 
   # get ansible ip for first host in target cluster
   ansible_host = None

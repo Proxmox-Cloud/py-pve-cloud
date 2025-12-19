@@ -6,7 +6,7 @@ import yaml
 import os
 
 
-def get_cloud_domain(target_pve):
+def get_cloud_domain(target_pve, suppress_warnings = False):
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
         services = avahi_disc.stdout.splitlines()
@@ -37,7 +37,8 @@ def get_cloud_domain(target_pve):
 
         raise RuntimeError("Could not get cloud domain via avahi mdns!")
     else:
-        print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
+        if not suppress_warnings:
+            print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
 
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
@@ -50,7 +51,7 @@ def get_cloud_domain(target_pve):
         raise Exception(f"Could not identify cloud domain for {target_pve}")
 
 
-def get_online_pve_host(target_pve):
+def get_online_pve_host(target_pve, suppress_warnings = False):
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(["avahi-browse", "-rpt", "_pxc._tcp"], stdout=subprocess.PIPE, text=True, check=True)
         services = avahi_disc.stdout.splitlines()
@@ -83,7 +84,8 @@ def get_online_pve_host(target_pve):
         
         raise RuntimeError(f"No online host found for {target_pve}!")
     else:
-        print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
+        if not suppress_warnings:
+            print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
 
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
@@ -105,7 +107,7 @@ def get_online_pve_host(target_pve):
         raise RuntimeError(f"Could not find online pve host for {target_pve}")
 
 
-def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
+def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False, suppress_warnings = False):
     if shutil.which("avahi-browse"):
         # avahi is available
 
@@ -200,7 +202,8 @@ def get_pve_inventory(pve_cloud_domain, skip_py_cloud_validation = False):
         return pve_inventory
 
     else:
-        print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
+        if not suppress_warnings:
+            print("avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!")
         # try load fallback manual inventory from disk
         inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
         if not os.path.exists(inv_path):
