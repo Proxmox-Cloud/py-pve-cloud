@@ -39,43 +39,42 @@ publish_pypi:
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
-# test pessimistic ci
-# # after building here we trigger downstream pipelines now
-# downstream_controller:
-#   stage: deploy
-#   needs:
-#     - publish_pypi
-#   trigger:
-#     project: "pve-cloud/pve-cloud-controller"
-#   variables:
-#     PY_PVE_CLOUD: $CI_COMMIT_TAG
-#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+# after building here we trigger downstream pipelines now
+downstream_controller:
+  stage: deploy
+  needs:
+    - publish_pypi
+  trigger:
+    project: "pve-cloud/pve-cloud-controller"
+  variables:
+    PY_PVE_CLOUD: $CI_COMMIT_TAG
+    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
-# downstream_pve_cloud:
-#   stage: deploy
-#   needs:
-#     - publish_pypi
-#   trigger:
-#     project: "pve-cloud/pve_cloud"
-#   variables:
-#     PY_PVE_CLOUD: $CI_COMMIT_TAG
-#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+downstream_pve_cloud:
+  stage: deploy
+  needs:
+    - publish_pypi
+  trigger:
+    project: "pve-cloud/pve_cloud"
+  variables:
+    PY_PVE_CLOUD: $CI_COMMIT_TAG
+    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
-# downstream_pytest_pve_cloud:
-#   stage: deploy
-#   needs:
-#     - publish_pypi
-#   trigger:
-#     project: "pve-cloud/pytest-pve-cloud"
-#   variables:
-#     PY_PVE_CLOUD: $CI_COMMIT_TAG
-#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+downstream_pytest_pve_cloud:
+  stage: deploy
+  needs:
+    - publish_pypi
+  trigger:
+    project: "pve-cloud/pytest-pve-cloud"
+  variables:
+    PY_PVE_CLOUD: $CI_COMMIT_TAG
+    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
 
 downstream_pxc_provider:
   stage: deploy
