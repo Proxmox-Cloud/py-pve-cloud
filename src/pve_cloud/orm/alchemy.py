@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, SmallInteger, Text
-from sqlalchemy.dialects.postgresql import MACADDR, INET, JSONB, insert
+from sqlalchemy.dialects.postgresql import MACADDR, INET, JSONB, insert, ENUM
 from sqlalchemy import create_engine, MetaData, Table, select, delete, update
 from sqlalchemy.orm import declarative_base
 from alembic.config import Config
@@ -33,6 +33,7 @@ class KeaReservations(Base):
   hostname = Column(String(253), nullable=False)
   client_classes = Column(String(1000)) # csv seperated client classes
   stack_fqdn = Column(String(253), nullable=False)
+  machine_type = Column(String(50), nullable=False)
 
 
 class KeaClientClassDefs(Base):
@@ -43,24 +44,7 @@ class KeaClientClassDefs(Base):
   class_content = Column(JSONB, nullable=False)
 
 
-class K8SWorkers(Base):
-  __tablename__ = "k8s_workers"
-
-  ip = Column(INET, primary_key=True)
-  hostname = Column(String(253), nullable=False)
-  stack_fqdn = Column(String(253), nullable=False)
-  proxy_stack_fqdn = Column(String(253), nullable=False)
-
-
-class K8SMasters(Base):
-  __tablename__ = "k8s_masters"
-
-  ip = Column(INET, primary_key=True)
-  hostname = Column(String(253), nullable=False)
-  stack_fqdn = Column(String(253), nullable=False)
-  proxy_stack_fqdn = Column(String(253), nullable=False)
-
-
+# todo: rename just ingress rules
 class K8SIngressRules(Base):
   __tablename__ = "k8s_ingress_rules"
 
@@ -70,8 +54,10 @@ class K8SIngressRules(Base):
   proxy_stack_fqdn = Column(String(253), nullable=False)
   external = Column(Boolean, default=False)
   rule_len = Column(Integer, nullable=False)
+  is_k8s = Column(Boolean, nullable=False)
 
 
+# todo: rename to just tcp proxies
 class K8STcpProxies(Base):
   __tablename__ = "k8s_tcp_proxies"
 
@@ -79,6 +65,8 @@ class K8STcpProxies(Base):
   haproxy_port = Column(SmallInteger, primary_key=True)
   node_port = Column(SmallInteger, nullable=False)
   stack_fqdn = Column(String(253), nullable=False)
+  # determines backend routing in haproxy, if false will go 
+  is_k8s = Column(Boolean, nullable=False) 
   proxy_snippet = Column(Text)
   proxy_stack_fqdn = Column(String(253), primary_key=True)
   external = Column(Boolean, default=False)
