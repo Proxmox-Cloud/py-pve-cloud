@@ -83,11 +83,13 @@ def connect_cluster(args):
     if node_ip_address is None:
       raise Exception(f"Could not find ip for node {node_name}")
     
+    print(f"adding {node_name}")
     dynamic_inventory[pve_cloud_domain][cluster_name][node_name] = {
       "ansible_user": "root",
       "ansible_host": node_ip_address
     }
 
+  print(f"writing dyn inv to {inv_path}")
   with open(inv_path, "w") as file:
     yaml.dump(dynamic_inventory, file)
 

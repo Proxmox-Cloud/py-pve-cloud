@@ -74,9 +74,9 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
   admin_conf["clusters"][0]["name"] = stack_name
 
   admin_conf["contexts"][0]["context"]["cluster"] = stack_name
-  admin_conf["contexts"][0]["name"] = f"kubernetes-admin@{stack_name}"
+  admin_conf["contexts"][0]["name"] = stack_name
 
-  admin_conf["current-context"] =  f"kubernetes-admin@{stack_name}"
+  admin_conf["current-context"] = stack_name
 
   return yaml.safe_dump(admin_conf)
 

@@ -100,6 +100,10 @@ def get_online_pve_host(target_pve, suppress_warnings = False, skip_py_cloud_che
                         pve_host_ip = pve_inventory[pve_cloud][pve_cluster][pve_host]["ansible_host"]
                         try:
                             with socket.create_connection((pve_host_ip, 22), timeout=3):
+                                
+                                if not skip_py_cloud_check:
+                                    raise_on_py_cloud_missmatch(pve_host_ip) # validate that versions of dev machine and running on cluster match
+
                                 return pve_host_ip
                         except Exception as e:
                             # debug
