@@ -104,6 +104,8 @@ downstream_pxc_provider:
 format_source:
   stage: .pre
   image: tobiashvmz/pve-cloud-pyci:2026010412
+  rules:
+    - when: always
   script:
     - autoflake --in-place --recursive .
     - black --exclude orm .
