@@ -105,6 +105,9 @@ format_source:
   stage: build
   image: tobiashvmz/pve-cloud-pyci:2026010412
   script:
+    - git config --global user.name "$GITLAB_USER_NAME"
+    - git config --global user.email "$GITLAB_USER_EMAIL"
+    
     - autoflake --in-place --recursive .
     - black --exclude orm .
     - isort --skip orm .
