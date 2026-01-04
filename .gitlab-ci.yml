@@ -108,7 +108,7 @@ format_source:
     - git config --global user.name "$GITLAB_USER_NAME"
     - git config --global user.email "$GITLAB_USER_EMAIL"
     
-    - autoflake --in-place --recursive .
+    - autoflake --exclude orm --in-place --recursive .
     - black --exclude orm .
     - isort --skip orm .
     # commit the changes
