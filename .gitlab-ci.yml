@@ -14,7 +14,7 @@ release_tag:
 publish_pypi:
   stage: deploy
   image:
-    name: python:3.14-trixie
+    name: tobiashvmz/pve-cloud-pyci:2026010412
   script:
     # install base packages for publishing
     - pip install build==1.3.0 twine==6.2.0
