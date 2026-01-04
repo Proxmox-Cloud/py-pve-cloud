@@ -16,8 +16,6 @@ publish_pypi:
   image:
     name: tobiashvmz/pve-cloud-pyci:2026010412
   script:
-    # install base packages for publishing
-    - pip install build==1.3.0 twine==6.2.0
     - echo "__version__ = \"$CI_COMMIT_TAG\"" > src/pve_cloud/_version.py # dynamic versioning
     - python3 -m build
     - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
