@@ -53,10 +53,21 @@ rc_tag:
 
       echo "Next RC tag: $rc_tag"
 
+      git tag "$rc_tag" -m "$CI_COMMIT_TAG" # create the rc tag
+      git push origin "$rc_tag" # push the tag
+
+      sleep 10 # ci wait
+
+      # trigger whatever release pipelines
+      curl --request POST \
+        --form "token=${CI_JOB_TOKEN}" \
+        --form "ref=${rc_tag}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/trigger/pipeline"
 
   rules:
     - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
   resource_group: deploy-prod
+
 
 release_tag:
   stage: build
@@ -77,14 +88,14 @@ publish_pypi:
   image:
     name: tobiashvmz/pve-cloud-pyci:2026010412
   script:
-    - echo "__version__ = \"$CI_COMMIT_TAG\"" > src/pve_cloud/_version.py # dynamic versioning
+    - echo "__version__ = \"${CI_COMMIT_TAG//-/}\"" > src/pve_cloud/_version.py # dynamic versioning, remove - from rc tags for pypi versioning
     - python3 -m build
     - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
 
     # curl loop wait for it to be accessible
     - |
       for i in {1..60}; do
-        if curl -s https://pypi.org/simple/py-pve-cloud/ | grep -q "py_pve_cloud-$CI_COMMIT_TAG.tar.gz"; then
+        if curl -s https://pypi.org/simple/py-pve-cloud/ | grep -q "py_pve_cloud-${CI_COMMIT_TAG//-/}.tar.gz"; then
           echo "exists!"
           exit 0
         fi
@@ -97,6 +108,7 @@ publish_pypi:
     # todo: implement offline boostrap / self hosted registry approach
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # rcs
 
 # after building here we trigger downstream pipelines now
 downstream_controller:
