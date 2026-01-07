@@ -1,3 +1,63 @@
+rc_tag:
+  stage: build
+  image: docker.io/tobiashvmz/pve-cloud-ci:2025122115
+  script:
+    - |
+      # set config based on the current commit for auto commit
+      git config --global user.name "$GITLAB_USER_NAME"
+      git config --global user.email "$GITLAB_USER_EMAIL"
+
+      # get the latest full release tag => default to 0.0.0
+      tags=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+      if [ -z "$tags" ]; then
+        latest_tag="0.0.0"
+      else
+        latest_tag=$(echo "$tags" | sort -V | tail -n 1)
+      fi
+
+      # split the tag and increment
+      major=$(echo "$latest_tag" | cut -d '.' -f 1)
+      minor=$(echo "$latest_tag" | cut -d '.' -f 2)
+      patch=$(echo "$latest_tag" | cut -d '.' -f 3)
+
+      if [[ "$CI_COMMIT_TAG" == *"-major" ]]; then
+        major=$((major + 1))
+        minor=0
+        patch=0
+      elif [[ "$CI_COMMIT_TAG" == *"-minor" ]]; then
+        minor=$((minor + 1))
+        patch=0
+      elif [[ "$CI_COMMIT_TAG" == *"-patch" ]]; then
+        patch=$((patch + 1))
+      else
+        echo "Unknown increment type: $CI_COMMIT_TAG"
+        exit 1
+      fi
+
+      new_tag="$major.$minor.$patch"
+
+      # check if rc tag exists
+      rc_tags=$(git tag -l | grep -E "^${new_tag}-rc[0-9]+$" || true)
+
+      # create / increment
+      if [ -z "$rc_tags" ]; then
+        rc_tag="${new_tag}-rc0"
+      else
+        latest_rc=$(echo "$rc_tags" | sort -V | tail -n 1)
+        rc_num=${latest_rc##*-rc}   # removes everything up to last "-rc"
+        
+        next_rc=$((rc_num + 1))
+        
+        rc_tag="${new_tag}-rc${next_rc}"
+      fi
+
+      echo "Next RC tag: $rc_tag"
+
+
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
+  resource_group: deploy-prod
+
 release_tag:
   stage: build
   image: docker.io/tobiashvmz/pve-cloud-ci:2025122115
