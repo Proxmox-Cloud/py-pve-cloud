@@ -1,19 +1,19 @@
 release_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:202601080950
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081015
   script:
     - /scripts/release-tag.sh
   rules:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
   resource_group: deploy-prod
 
-rc_release_tag:
+rc_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:202601080950
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081015
   script:
-    - /scripts/rc-release-tag.sh
+    - /scripts/rc-tag.sh
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^rc-release-[a-z]+$/'
+    - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
   resource_group: deploy-prod
 
 # called by curl post, could also be called manually but creating
@@ -57,7 +57,7 @@ downstream_controller:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # rcs
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_backup:
   stage: deploy
@@ -70,6 +70,7 @@ downstream_backup:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+
 
 downstream_pve_cloud:
   stage: deploy
@@ -131,7 +132,7 @@ format_source:
         $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+$/ &&
         $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+-rc\d+$/ &&
         $CI_COMMIT_TAG !~ /^release-[a-z]+$/ &&
-        $CI_COMMIT_TAG !~ /^rc-release-[a-z]+$/ &&
+        $CI_COMMIT_TAG !~ /^rc-[a-z]+$/ &&
         $CI_PIPELINE_SOURCE == 'push'
       when: on_success
     - when: never
