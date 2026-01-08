@@ -16,7 +16,6 @@ rc_tag:
     - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
   resource_group: deploy-prod
 
-
 # called by curl post, could also be called manually but creating
 # release-patch... is much easier
 publish_pypi:
@@ -84,6 +83,7 @@ downstream_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pytest_pve_cloud:
   stage: deploy
@@ -96,6 +96,7 @@ downstream_pytest_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pxc_provider:
   stage: deploy
@@ -108,6 +109,7 @@ downstream_pxc_provider:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 format_source:
   stage: build
