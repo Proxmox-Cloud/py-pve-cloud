@@ -1,6 +1,6 @@
 rc_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:2026010808
+  image: docker.io/tobiashvmz/pve-cloud-ci:2026010809
   script:
     - /scripts/rc-release-tag.sh
   rules:
@@ -10,7 +10,7 @@ rc_tag:
 
 release_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:2026010808
+  image: docker.io/tobiashvmz/pve-cloud-ci:2026010809
   script:
     - /scripts/release-tag.sh
   rules:
