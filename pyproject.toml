@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE.md"]
 dependencies = [
   "PyYAML==6.0.3",
-  "psycopg2-binary==2.9.10",
+  "psycopg2-binary==2.9.11",
   "SQLAlchemy==2.0.45",
   "alembic==1.17.2",
   "paramiko==4.0.0",
