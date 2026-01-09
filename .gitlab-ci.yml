@@ -1,12 +1,19 @@
 release_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:2025122115
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
   script:
-    - pwd
     - /scripts/release-tag.sh
   rules:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
-    - if: '$CI_COMMIT_TAG =~ /^release-all-[a-z]+$/'
+  resource_group: deploy-prod
+
+rc_tag:
+  stage: build
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
+  script:
+    - /scripts/rc-tag.sh
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
   resource_group: deploy-prod
 
 # called by curl post, could also be called manually but creating
@@ -14,16 +21,16 @@ release_tag:
 publish_pypi:
   stage: deploy
   image:
-    name: tobiashvmz/pve-cloud-pyci:2026010412
+    name: tobiashvmz/pve-cloud-pyci:202601090831
   script:
-    - echo "__version__ = \"$CI_COMMIT_TAG\"" > src/pve_cloud/_version.py # dynamic versioning
+    - echo "__version__ = \"${CI_COMMIT_TAG//-/}\"" > src/pve_cloud/_version.py # dynamic versioning, remove - from rc tags for pypi versioning
     - python3 -m build
     - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
 
     # curl loop wait for it to be accessible
     - |
       for i in {1..60}; do
-        if curl -s https://pypi.org/simple/py-pve-cloud/ | grep -q "py_pve_cloud-$CI_COMMIT_TAG.tar.gz"; then
+        if curl -s https://pypi.org/simple/py-pve-cloud/ | grep -q "py_pve_cloud-${CI_COMMIT_TAG//-/}.tar.gz"; then
           echo "exists!"
           exit 0
         fi
@@ -36,6 +43,7 @@ publish_pypi:
     # todo: implement offline boostrap / self hosted registry approach
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # rcs
 
 # after building here we trigger downstream pipelines now
 downstream_controller:
@@ -49,6 +57,7 @@ downstream_controller:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_backup:
   stage: deploy
@@ -61,6 +70,7 @@ downstream_backup:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pve_cloud:
   stage: deploy
@@ -73,6 +83,7 @@ downstream_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pytest_pve_cloud:
   stage: deploy
@@ -85,6 +96,7 @@ downstream_pytest_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pxc_provider:
   stage: deploy
@@ -97,15 +109,14 @@ downstream_pxc_provider:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 format_source:
   stage: build
-  image: tobiashvmz/pve-cloud-pyci:2026010412
+  image: tobiashvmz/pve-cloud-pyci:202601090831
   script:
     - git config --global user.name "$GITLAB_USER_NAME"
     - git config --global user.email "$GITLAB_USER_EMAIL"
-    
     - autoflake --exclude orm --in-place --recursive .
     - black --exclude orm .
     - isort --skip orm .
@@ -121,8 +132,10 @@ format_source:
   rules:
     - if: >
         $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+$/ &&
+        $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+-rc\d+$/ &&
         $CI_COMMIT_TAG !~ /^release-[a-z]+$/ &&
-        $CI_COMMIT_TAG !~ /^release-all-[a-z]+$/ &&
+        $CI_COMMIT_TAG !~ /^rc-[a-z]+$/ &&
         $CI_PIPELINE_SOURCE == 'push'
       when: on_success
     - when: never
+  resource_group: deploy-prod
