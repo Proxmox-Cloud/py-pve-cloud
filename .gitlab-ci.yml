@@ -1,92 +1,27 @@
-rc_tag:
-  stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:2025122115
-  script:
-    - |
-      # set config based on the current commit for auto commit
-      git config --global user.name "$GITLAB_USER_NAME"
-      git config --global user.email "$GITLAB_USER_EMAIL"
-
-      # get the latest full release tag => default to 0.0.0
-      tags=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-      if [ -z "$tags" ]; then
-        latest_tag="0.0.0"
-      else
-        latest_tag=$(echo "$tags" | sort -V | tail -n 1)
-      fi
-
-      # split the tag and increment
-      major=$(echo "$latest_tag" | cut -d '.' -f 1)
-      minor=$(echo "$latest_tag" | cut -d '.' -f 2)
-      patch=$(echo "$latest_tag" | cut -d '.' -f 3)
-
-      if [[ "$CI_COMMIT_TAG" == *"-major" ]]; then
-        major=$((major + 1))
-        minor=0
-        patch=0
-      elif [[ "$CI_COMMIT_TAG" == *"-minor" ]]; then
-        minor=$((minor + 1))
-        patch=0
-      elif [[ "$CI_COMMIT_TAG" == *"-patch" ]]; then
-        patch=$((patch + 1))
-      else
-        echo "Unknown increment type: $CI_COMMIT_TAG"
-        exit 1
-      fi
-
-      new_tag="$major.$minor.$patch"
-
-      # check if rc tag exists
-      rc_tags=$(git tag -l | grep -E "^${new_tag}-rc[0-9]+$" || true)
-
-      # create / increment
-      if [ -z "$rc_tags" ]; then
-        rc_tag="${new_tag}-rc0"
-      else
-        latest_rc=$(echo "$rc_tags" | sort -V | tail -n 1)
-        rc_num=${latest_rc##*-rc}   # removes everything up to last "-rc"
-        
-        next_rc=$((rc_num + 1))
-        
-        rc_tag="${new_tag}-rc${next_rc}"
-      fi
-
-      echo "Next RC tag: $rc_tag"
-
-      git tag "$rc_tag" -m "$CI_COMMIT_TAG" # create the rc tag
-      git push origin "$rc_tag" # push the tag
-
-      sleep 10 # ci wait
-
-      # trigger whatever release pipelines
-      curl --request POST \
-        --form "token=${CI_JOB_TOKEN}" \
-        --form "ref=${rc_tag}" \
-        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/trigger/pipeline"
-
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
-  resource_group: deploy-prod
-
-
 release_tag:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:2025122115
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
   script:
-    - pwd
     - /scripts/release-tag.sh
   rules:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
-    - if: '$CI_COMMIT_TAG =~ /^release-all-[a-z]+$/'
   resource_group: deploy-prod
 
+rc_tag:
+  stage: build
+  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
+  script:
+    - /scripts/rc-tag.sh
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
+  resource_group: deploy-prod
 
 # called by curl post, could also be called manually but creating
 # release-patch... is much easier
 publish_pypi:
   stage: deploy
   image:
-    name: tobiashvmz/pve-cloud-pyci:2026010412
+    name: tobiashvmz/pve-cloud-pyci:202601090831
   script:
     - echo "__version__ = \"${CI_COMMIT_TAG//-/}\"" > src/pve_cloud/_version.py # dynamic versioning, remove - from rc tags for pypi versioning
     - python3 -m build
@@ -122,7 +57,7 @@ downstream_controller:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # rcs
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_backup:
   stage: deploy
@@ -135,6 +70,7 @@ downstream_backup:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pve_cloud:
   stage: deploy
@@ -147,6 +83,7 @@ downstream_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pytest_pve_cloud:
   stage: deploy
@@ -159,6 +96,7 @@ downstream_pytest_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 downstream_pxc_provider:
   stage: deploy
@@ -171,15 +109,14 @@ downstream_pxc_provider:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-
+    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 format_source:
   stage: build
-  image: tobiashvmz/pve-cloud-pyci:2026010412
+  image: tobiashvmz/pve-cloud-pyci:202601090831
   script:
     - git config --global user.name "$GITLAB_USER_NAME"
     - git config --global user.email "$GITLAB_USER_EMAIL"
-    
     - autoflake --exclude orm --in-place --recursive .
     - black --exclude orm .
     - isort --skip orm .
@@ -195,8 +132,10 @@ format_source:
   rules:
     - if: >
         $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+$/ &&
+        $CI_COMMIT_TAG !~ /^\d+\.\d+\.\d+-rc\d+$/ &&
         $CI_COMMIT_TAG !~ /^release-[a-z]+$/ &&
-        $CI_COMMIT_TAG !~ /^release-all-[a-z]+$/ &&
+        $CI_COMMIT_TAG !~ /^rc-[a-z]+$/ &&
         $CI_PIPELINE_SOURCE == 'push'
       when: on_success
     - when: never
+  resource_group: deploy-prod
