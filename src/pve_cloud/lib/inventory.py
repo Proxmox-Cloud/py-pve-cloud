@@ -138,7 +138,10 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
 
 
 def get_pve_inventory(
-    pve_cloud_domain, suppress_warnings=False, skip_py_cloud_check=False, fetch_other_pve_hosts=False
+    pve_cloud_domain,
+    suppress_warnings=False,
+    skip_py_cloud_check=False,
+    fetch_other_pve_hosts=False,
 ):
     if shutil.which("avahi-browse"):
         # avahi is available
@@ -181,7 +184,7 @@ def get_pve_inventory(
                     raise ValueError(
                         f"Missconfigured proxmox cloud avahi service: {service}"
                     )
-                
+
                 if cluster_name not in pve_inventory:
                     pve_inventory[cluster_name] = {}
 
@@ -209,10 +212,9 @@ def get_pve_inventory(
 
                     cloud_domain_first_hosts[cluster_name] = host_ip
 
-
         if not fetch_other_pve_hosts:
-            return pve_inventory # return without doing inter api call resolution
-        
+            return pve_inventory  # return without doing inter api call resolution
+
         # iterate over hosts and build pve inv via proxmox api
         # todo: this needs to be hugely optimized it blocks the grpc server
         for cluster_first, first_host in cloud_domain_first_hosts.items():
