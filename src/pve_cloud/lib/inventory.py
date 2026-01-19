@@ -185,13 +185,15 @@ def get_pve_inventory(
                         f"Missconfigured proxmox cloud avahi service: {service}"
                     )
 
-                if cluster_name not in pve_inventory:
-                    pve_inventory[cluster_name] = {}
+                # build inventory only for the current domain
+                if cloud_domain == pve_cloud_domain:
+                    if cluster_name not in pve_inventory:
+                        pve_inventory[cluster_name] = {}
 
-                pve_inventory[cluster_name][host_name] = {
-                    "ansible_user": "root",
-                    "ansible_host": host_ip,
-                }
+                    pve_inventory[cluster_name][host_name] = {
+                        "ansible_user": "root",
+                        "ansible_host": host_ip,
+                    }
 
                 # main pve cloud inventory
                 if (
