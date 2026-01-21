@@ -6,7 +6,7 @@ This is the core python library package that serves as a foundation for pve clou
 
 This project uses sqlalchemy + alembic integrated into the collection for management of the patroni database schema.
 
-Edit `src/orm/alchemy.py` database classes and run `alembic revision --autogenerate -m "revision description"` from the orm folder, to commit your changes into the general migrations. Before you need to do a `pip install .` to get the needed orm pypi packages.
+Edit `src/pve_cloud/orm/alchemy.py` database classes and run `alembic revision --autogenerate -m "revision description"` from the orm folder, to commit your changes into the general migrations. Before you need to do a `pip install .` to get the needed orm pypi packages.
 
 get env var auth
 

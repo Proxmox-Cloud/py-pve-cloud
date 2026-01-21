@@ -80,6 +80,26 @@ class K8SExternalControlPlanes(Base):
   proxy_stack_fqdn = Column(String(253), nullable=False)
 
 
+# vars are overwrite on exist and have no guarantee that they get cleaned up
+# / that the vms still exist if a user just deletes via proxmox ui
+# todo: built in some sort of cleanup mechanism
+class VirtualMachineVars(Base):
+  __tablename__ = "vm_vars_blake"
+
+  blake_id = Column(String(50), primary_key=True)
+  vm_vars = Column(JSONB, nullable=False)
+
+
+# is also used for configuration and dynamic discovery
+class ProxmoxCloudSecrets(Base):
+  __tablename__ = "px_cloud_secrets"
+
+  target_pve = Column(String(253), primary_key=True)
+  secret_name = Column(String(253), primary_key=True)
+  secret_data = Column(JSONB, nullable=False)
+  secret_type = Column(String(50), nullable=True)
+
+
 # apply the migrations to the database
 def migrate(conn_str):
   alembic_cfg = Config(os.path.join(os.path.dirname(__file__), 'alembic.ini'))
