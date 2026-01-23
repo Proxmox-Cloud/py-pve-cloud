@@ -86,6 +86,7 @@ class K8SExternalControlPlanes(Base):
 class VirtualMachineVars(Base):
   __tablename__ = "vm_vars_blake"
 
+  cloud_domain = Column(String(253), primary_key=True)
   blake_id = Column(String(50), primary_key=True)
   vm_vars = Column(JSONB, nullable=False)
 
@@ -94,7 +95,7 @@ class VirtualMachineVars(Base):
 class ProxmoxCloudSecrets(Base):
   __tablename__ = "px_cloud_secrets"
 
-  target_pve = Column(String(253), primary_key=True)
+  cloud_domain = Column(String(253), primary_key=True)
   secret_name = Column(String(253), primary_key=True)
   secret_data = Column(JSONB, nullable=False)
   secret_type = Column(String(50), nullable=True)
