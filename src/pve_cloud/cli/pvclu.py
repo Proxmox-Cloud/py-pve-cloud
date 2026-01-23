@@ -89,14 +89,24 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 
 
 def export_pg_conn_str(args):
-    cloud_domain = get_cloud_domain(args.target_pve, suppress_warnings=True)
+    if args.target_pve:
+        cloud_domain = get_cloud_domain(args.target_pve, suppress_warnings=True)
+    elif args.cloud_domain:
+        cloud_domain = args.cloud_domain
+    else:
+        raise RuntimeError("Neither --target-pve nor --cloud-domain was specified.")
+    
     pve_inventory = get_pve_inventory(cloud_domain, suppress_warnings=True)
 
     # get ansible ip for first host in target cluster
     ansible_host = None
     for cluster in pve_inventory:
-        if args.target_pve.startswith(cluster):
+        if args.cloud_domain:
             ansible_host = next(iter(pve_inventory[cluster].values()))["ansible_host"]
+            break
+        elif args.target_pve.startswith(cluster):
+            ansible_host = next(iter(pve_inventory[cluster].values()))["ansible_host"]
+            break
 
     if not ansible_host:
         raise RuntimeError(f"Could not find online host for {args.target_pve}!")
@@ -121,7 +131,10 @@ def main():
         "export-psql", help="Export variables for k8s .envrc", parents=[base_parser]
     )
     export_envr_parser.add_argument(
-        "--target-pve", type=str, help="The target pve cluster.", required=True
+        "--target-pve", type=str, help="The target pve cluster, specify this or cloud domain directly."
+    )
+    export_envr_parser.add_argument(
+        "--cloud-domain", type=str, help="Cloud domain instead of target pve."
     )
     export_envr_parser.set_defaults(func=export_pg_conn_str)
 
