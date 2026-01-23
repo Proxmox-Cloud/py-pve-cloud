@@ -96,7 +96,7 @@ downstream_pytest_pve_cloud:
     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
+    # no rc for pytest lib, same as schemas
 
 downstream_pxc_provider:
   stage: deploy
