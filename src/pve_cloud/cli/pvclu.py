@@ -95,7 +95,7 @@ def export_pg_conn_str(args):
         cloud_domain = args.cloud_domain
     else:
         raise RuntimeError("Neither --target-pve nor --cloud-domain was specified.")
-    
+
     pve_inventory = get_pve_inventory(cloud_domain, suppress_warnings=True)
 
     # get ansible ip for first host in target cluster
@@ -131,7 +131,9 @@ def main():
         "export-psql", help="Export variables for k8s .envrc", parents=[base_parser]
     )
     export_envr_parser.add_argument(
-        "--target-pve", type=str, help="The target pve cluster, specify this or cloud domain directly."
+        "--target-pve",
+        type=str,
+        help="The target pve cluster, specify this or cloud domain directly.",
     )
     export_envr_parser.add_argument(
         "--cloud-domain", type=str, help="Cloud domain instead of target pve."
