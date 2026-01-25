@@ -66,7 +66,7 @@
 
 trigger_argo_wf:
   stage: build
-  image: argoproj/argocli:v3.6.17
+  image: tobiashvmz/pve-cloud-ci:202601251951
   script:
     - echo $ARGO_KUBECONFIG_B64 | base64 -d > /tmp/argo-kubeconfig.yml
     - export KUBECONFIG=/tmp/argo-kubeconfig.yml
