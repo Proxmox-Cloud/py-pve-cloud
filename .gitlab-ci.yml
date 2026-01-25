@@ -1,115 +1,90 @@
-release_tag:
+# # after building here we trigger downstream pipelines now
+# downstream_controller:
+#   stage: deploy
+#   needs:
+#     - publish_pypi
+#   trigger:
+#     project: "pve-cloud/pve-cloud-controller"
+#   variables:
+#     PY_PVE_CLOUD: $CI_COMMIT_TAG
+#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
+
+# downstream_backup:
+#   stage: deploy
+#   needs:
+#     - publish_pypi
+#   trigger:
+#     project: "pve-cloud/pve-cloud-backup"
+#   variables:
+#     PY_PVE_CLOUD: $CI_COMMIT_TAG
+#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
+
+# downstream_pve_cloud:
+#   stage: deploy
+#   needs:
+#     - publish_pypi
+#   trigger:
+#     project: "pve-cloud/pve_cloud"
+#   variables:
+#     PY_PVE_CLOUD: $CI_COMMIT_TAG
+#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
+
+# downstream_pytest_pve_cloud:
+#   stage: deploy
+#   needs:
+#     - publish_pypi
+#   trigger:
+#     project: "pve-cloud/pytest-pve-cloud"
+#   variables:
+#     PY_PVE_CLOUD: $CI_COMMIT_TAG
+#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+#     # no rc for pytest lib, same as schemas
+
+# downstream_pxc_provider:
+#   stage: deploy
+#   needs:
+#     - publish_pypi
+#   trigger:
+#     project: "pve-cloud/terraform-provider-pxc"
+#   variables:
+#     PY_PVE_CLOUD: $CI_COMMIT_TAG
+#     UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
+#     - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
+
+trigger_argo_wf:
   stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
+  image: argoproj/argocli:v3.6.17
   script:
-    - /scripts/release-tag.sh
+    - echo $ARGO_KUBECONFIG_B64 | base64 -d > /tmp/argo-kubeconfig.yml
+    - export KUBECONFIG=/tmp/argo-kubeconfig.yml
+
+    - build_type=${CI_COMMIT_TAG%-*}
+    - build_increment=${CI_COMMIT_TAG#*-}
+
+    - |
+      argo submit --watch \
+        -p "git_host=$CI_SERVER_HOST" -p "git_pull_prefix=git@$CI_SERVER_HOST:$CI_PROJECT_NAMESPACE" \
+        -p "git_user=$GITLAB_USER_NAME" -p "git_email=$GITLAB_USER_EMAIL" \
+        -p "build_increment=$build_increment" -p "build_type=$build_type" \
+        https://$CI_SERVER_HOST/$CI_PROJECT_NAMESPACE/pve-cloud-pipelines/-/raw/master/argo-dag-wf.yaml?ref_type=heads
+
   rules:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
-  resource_group: deploy-prod
-
-rc_tag:
-  stage: build
-  image: docker.io/tobiashvmz/pve-cloud-ci:202601081028
-  script:
-    - /scripts/rc-tag.sh
-  rules:
     - if: '$CI_COMMIT_TAG =~ /^rc-[a-z]+$/'
-  resource_group: deploy-prod
 
-# called by curl post, could also be called manually but creating
-# release-patch... is much easier
-publish_pypi:
-  stage: deploy
-  image:
-    name: tobiashvmz/pve-cloud-pyci:202601090831
-  script:
-    - echo "__version__ = \"${CI_COMMIT_TAG//-/}\"" > src/pve_cloud/_version.py # dynamic versioning, remove - from rc tags for pypi versioning
-    - python3 -m build
-    - python3 -m twine upload dist/* -u __token__ -p $PYPI_TOKEN # skip gitlab oidc twine feature with -u and -p flags
-
-    # curl loop wait for it to be accessible
-    - |
-      for i in {1..60}; do
-        if curl -s https://pypi.org/simple/py-pve-cloud/ | grep -q "py_pve_cloud-${CI_COMMIT_TAG//-/}.tar.gz"; then
-          echo "exists!"
-          exit 0
-        fi
-        echo "Waiting… ($i/60)"
-        sleep 10
-      done
-      echo "timeout!"
-      exit 1
-
-    # todo: implement offline boostrap / self hosted registry approach
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # rcs
-
-# after building here we trigger downstream pipelines now
-downstream_controller:
-  stage: deploy
-  needs:
-    - publish_pypi
-  trigger:
-    project: "pve-cloud/pve-cloud-controller"
-  variables:
-    PY_PVE_CLOUD: $CI_COMMIT_TAG
-    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
-
-downstream_backup:
-  stage: deploy
-  needs:
-    - publish_pypi
-  trigger:
-    project: "pve-cloud/pve-cloud-backup"
-  variables:
-    PY_PVE_CLOUD: $CI_COMMIT_TAG
-    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
-
-downstream_pve_cloud:
-  stage: deploy
-  needs:
-    - publish_pypi
-  trigger:
-    project: "pve-cloud/pve_cloud"
-  variables:
-    PY_PVE_CLOUD: $CI_COMMIT_TAG
-    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
-
-downstream_pytest_pve_cloud:
-  stage: deploy
-  needs:
-    - publish_pypi
-  trigger:
-    project: "pve-cloud/pytest-pve-cloud"
-  variables:
-    PY_PVE_CLOUD: $CI_COMMIT_TAG
-    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    # no rc for pytest lib, same as schemas
-
-downstream_pxc_provider:
-  stage: deploy
-  needs:
-    - publish_pypi
-  trigger:
-    project: "pve-cloud/terraform-provider-pxc"
-  variables:
-    PY_PVE_CLOUD: $CI_COMMIT_TAG
-    UPSTREAM_TAG_MESSAGE: $CI_COMMIT_TAG_MESSAGE # here we store the type of the release
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/' # semver
-    - if: '$CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+-rc\d+$/' # release candidate
 
 format_source:
   stage: build
