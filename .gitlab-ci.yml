@@ -72,10 +72,11 @@ trigger_argo_wf:
     - export KUBECONFIG=/tmp/argo-kubeconfig.yml
     - cat /tmp/argo-kubeconfig.yml
 
-    - argo list -n argo
-
+  
     - unset KUBERNETES_SERVICE_HOST
     - unset KUBERNETES_SERVICE_PORT
+
+    - argo list -n argo
 
     - build_type=${CI_COMMIT_TAG%-*}
     - build_increment=${CI_COMMIT_TAG#*-}
