@@ -68,9 +68,9 @@ trigger_argo_wf:
   stage: build
   image: tobiashvmz/pve-cloud-ci:202601252045
   script:
-    - mkdir -p $HOME/.kube
-    - echo $ARGO_KUBECONFIG_B64 | base64 -d > $HOME/.kube/config
-
+    # - mkdir -p $HOME/.kube
+    # - echo $ARGO_KUBECONFIG_B64 | base64 -d > $HOME/.kube/config
+    - export KUBECONFIG=$ARGO_KUBECONFIG
     - kubectl get all
 
     - unset KUBERNETES_SERVICE_HOST
