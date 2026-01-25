@@ -66,15 +66,17 @@
 
 trigger_argo_wf:
   stage: build
-  image: tobiashvmz/pve-cloud-ci:202601252014
+  image: tobiashvmz/pve-cloud-ci:202601252039
   script:
     - echo $ARGO_KUBECONFIG_B64 | base64 -d > /tmp/argo-kubeconfig.yml
     - export KUBECONFIG=/tmp/argo-kubeconfig.yml
-    - cat /tmp/argo-kubeconfig.yml
 
-  
+    - kubectl get all
+
     - unset KUBERNETES_SERVICE_HOST
     - unset KUBERNETES_SERVICE_PORT
+
+    - kubectl get all
 
     - argo list -n argo
 
