@@ -71,8 +71,8 @@ trigger_argo_wf:
     - echo $ARGO_KUBECONFIG_B64 | base64 -d > /tmp/argo-kubeconfig.yml
     - export KUBECONFIG=/tmp/argo-kubeconfig.yml
 
-    - echo $KUBERNETES_SERVICE_HOST
-    - echo $KUBERNETES_SERVICE_PORT
+    - unset KUBERNETES_SERVICE_HOST
+    - unset KUBERNETES_SERVICE_PORT
 
     - build_type=${CI_COMMIT_TAG%-*}
     - build_increment=${CI_COMMIT_TAG#*-}
