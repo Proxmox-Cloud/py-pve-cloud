@@ -68,29 +68,17 @@ trigger_argo_wf:
   stage: build
   image: tobiashvmz/pve-cloud-ci:202601252045
   script:
-    # - mkdir -p $HOME/.kube
-    # - echo $ARGO_KUBECONFIG_B64 | base64 -d > $HOME/.kube/config
     - export KUBECONFIG=$ARGO_KUBECONFIG
-    - kubectl get all
-
-    - unset KUBERNETES_SERVICE_HOST
-    - unset KUBERNETES_SERVICE_PORT
-
-    - kubectl get all
-
-    - argo list -n argo
 
     - build_type=${CI_COMMIT_TAG%-*}
     - build_increment=${CI_COMMIT_TAG#*-}
 
-    - argo submit -n argo --watch /scripts/argo-dag-wf.yaml
-
-    # - |
-    #   argo submit -n argo --watch /scripts/argo-dag-wf.yaml
-    #     # -p "git_host=$CI_SERVER_HOST" -p "git_pull_prefix=git@$CI_SERVER_HOST:$CI_PROJECT_NAMESPACE" \
-    #     # -p "git_user=$GITLAB_USER_NAME" -p "git_email=$GITLAB_USER_EMAIL" \
-    #     # -p "build_increment=$build_increment" -p "build_type=$build_type" \
-    #     # /scripts/argo-dag-wf.yaml
+    - |
+      argo submit -n argo --watch \
+        -p "git_host=$CI_SERVER_HOST" -p "git_pull_prefix=git@$CI_SERVER_HOST:$CI_PROJECT_NAMESPACE" \
+        -p "git_user=$GITLAB_USER_NAME" -p "git_email=$GITLAB_USER_EMAIL" \
+        -p "build_increment=$build_increment" -p "build_type=$build_type" \
+        /scripts/argo-dag-wf.yaml
 
   rules:
     - if: '$CI_COMMIT_TAG =~ /^release-[a-z]+$/'
