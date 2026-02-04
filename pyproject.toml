@@ -10,7 +10,7 @@ license-files = ["LICENSE.md"]
 dependencies = [
   "PyYAML==6.0.3",
   "psycopg2-binary==2.9.11",
-  "SQLAlchemy==2.0.45",
+  "SQLAlchemy==2.0.46",
   "alembic==1.18.0",
   "paramiko==4.0.0",
   "proxmoxer==2.2.0",
