@@ -13,7 +13,7 @@ dependencies = [
   "SQLAlchemy==2.0.45",
   "alembic==1.18.0",
   "paramiko==4.0.0",
-  "proxmoxer==2.2.0",
+  "proxmoxer==2.3.0",
   "dnspython==2.8.0"
 ]
 dynamic = ["version"]
