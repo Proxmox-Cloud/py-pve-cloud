@@ -84,7 +84,7 @@ def connect_cluster(args):
                     node_ip_address = iface.get("address")
                     break
             else:
-                if "gateway" in iface: # otherwise fallback to iface with default gw
+                if "gateway" in iface:  # otherwise fallback to iface with default gw
                     if node_ip_address is not None:
                         raise Exception(
                             f"found multiple ifaces with gateways for node {node_name}"
