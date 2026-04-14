@@ -78,12 +78,18 @@ def connect_cluster(args):
         ifaces = proxmox.nodes(node_name).network.get()
         node_ip_address = None
         for iface in ifaces:
-            if "gateway" in iface:
-                if node_ip_address is not None:
-                    raise Exception(
-                        f"found multiple ifaces with gateways for node {node_name}"
-                    )
-                node_ip_address = iface.get("address")
+            # when specified only take the host ip from the special iface
+            if args.mgmt_iface:
+                if iface["iface"] == args.mgmt_iface:
+                    node_ip_address = iface.get("address")
+                    break
+            else:
+                if "gateway" in iface: # otherwise fallback to iface with default gw
+                    if node_ip_address is not None:
+                        raise Exception(
+                            f"found multiple ifaces with gateways for node {node_name}"
+                        )
+                    node_ip_address = iface.get("address")
 
         if node_ip_address is None:
             raise Exception(f"Could not find ip for node {node_name}")
@@ -160,6 +166,11 @@ def main():
         type=str,
         help="PVE Host to connect to and add the entire cluster for the local machine.",
         required=True,
+    )
+    connect_cluster_parser.add_argument(
+        "--mgmt-iface",
+        type=str,
+        help="Choose a special iface on the pve hosts from where to get their ip. This is useful if the management access is on another iface. Defaults to the iface that has the default gateway set.",
     )
     connect_cluster_parser.add_argument(
         "--force", action="store_true", help="Will read the cluster if set."
