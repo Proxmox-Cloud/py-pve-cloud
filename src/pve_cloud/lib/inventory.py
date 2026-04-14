@@ -123,7 +123,6 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                         ]
                         try:
                             with socket.create_connection((pve_host_ip, 22), timeout=3):
-
                                 if not skip_py_cloud_check:
                                     raise_on_py_cloud_missmatch(
                                         pve_host_ip
