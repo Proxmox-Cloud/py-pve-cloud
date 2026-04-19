@@ -121,17 +121,22 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                         pve_host_ip = pve_inventory[pve_cloud][pve_cluster][pve_host][
                             "ansible_host"
                         ]
+
+                        # first we check if the host is online
                         try:
                             with socket.create_connection((pve_host_ip, 22), timeout=3):
-                                if not skip_py_cloud_check:
-                                    raise_on_py_cloud_missmatch(
-                                        pve_host_ip
-                                    )  # validate that versions of dev machine and running on cluster match
-
-                                return pve_host_ip
+                                pass
                         except Exception as e:
-                            # debug
-                            print(e, type(e))
+                            print(e, type(e)) # todo: this should only catch specific socket exceptions
+                            continue
+
+                        # if we got here it means the host is online, we now perform the version check
+                        if not skip_py_cloud_check:
+                            raise_on_py_cloud_missmatch(
+                                pve_host_ip
+                            )  # validate that versions of dev machine and running on cluster match
+
+                        return pve_host_ip # return the online host that conditionally got version checked
 
         raise RuntimeError(f"Could not find online pve host for {target_pve}")
 
