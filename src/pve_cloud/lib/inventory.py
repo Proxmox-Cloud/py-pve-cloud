@@ -127,7 +127,9 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                             with socket.create_connection((pve_host_ip, 22), timeout=3):
                                 pass
                         except Exception as e:
-                            print(e, type(e)) # todo: this should only catch specific socket exceptions
+                            print(
+                                e, type(e)
+                            )  # todo: this should only catch specific socket exceptions
                             continue
 
                         # if we got here it means the host is online, we now perform the version check
@@ -136,7 +138,7 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                                 pve_host_ip
                             )  # validate that versions of dev machine and running on cluster match
 
-                        return pve_host_ip # return the online host that conditionally got version checked
+                        return pve_host_ip  # return the online host that conditionally got version checked
 
         raise RuntimeError(f"Could not find online pve host for {target_pve}")
 
