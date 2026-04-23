@@ -8,6 +8,21 @@ from proxmoxer import ProxmoxAPI
 
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 
+def check_ssh_open(host):
+    try:
+        with socket.create_connection((host, 22), timeout=3) as s:
+            with socket.SocketIO(s, "rwb") as sio:
+                # read ssh server answer
+                sio.readline()
+                
+                # send client hello
+                sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
+                sio.flush()
+                
+            return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
 
 def get_cloud_domain(target_pve, suppress_warnings=False):
     if shutil.which("avahi-browse"):
@@ -122,14 +137,7 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                             "ansible_host"
                         ]
 
-                        # first we check if the host is online
-                        try:
-                            with socket.create_connection((pve_host_ip, 22), timeout=3):
-                                pass
-                        except Exception as e:
-                            print(
-                                e, type(e)
-                            )  # todo: this should only catch specific socket exceptions
+                        if not check_ssh_open(pve_host_ip):
                             continue
 
                         # if we got here it means the host is online, we now perform the version check
