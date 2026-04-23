@@ -8,17 +8,18 @@ from proxmoxer import ProxmoxAPI
 
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 
+
 def check_ssh_open(host):
     try:
         with socket.create_connection((host, 22), timeout=3) as s:
             with socket.SocketIO(s, "rwb") as sio:
                 # read ssh server answer
                 sio.readline()
-                
+
                 # send client hello
                 sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
                 sio.flush()
-                
+
             return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
