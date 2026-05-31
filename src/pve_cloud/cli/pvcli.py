@@ -79,8 +79,8 @@ def connect_cluster(args):
         node_ip_address = None
         for iface in ifaces:
             # when specified only take the host ip from the special iface
-            if args.mgmt_iface:
-                if iface["iface"] == args.mgmt_iface:
+            if args.host_iface:
+                if iface["iface"] == args.host_iface:
                     node_ip_address = iface.get("address")
                     break
             else:
@@ -168,9 +168,9 @@ def main():
         required=True,
     )
     connect_cluster_parser.add_argument(
-        "--mgmt-iface",
+        "--host-iface",
         type=str,
-        help="Choose a special iface on the pve hosts from where to get their ip. This is useful if the management access is on another iface. Defaults to the iface that has the default gateway set.",
+        help="Choose a special iface on the pve hosts from where to get their ip. This is useful for accessing the hosts via their vm data ip. Defaults to the iface that has the default gateway set.",
     )
     connect_cluster_parser.add_argument(
         "--force", action="store_true", help="Will read the cluster if set."
