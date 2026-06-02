@@ -8,6 +8,7 @@ import yaml
 from proxmoxer import ProxmoxAPI
 
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 
 def check_ssh_open(host):
@@ -100,6 +101,8 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
 
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
+        
+        validate_cloud_dyn_inv(pve_inventory)
 
         for pve_cloud in pve_inventory:
             for pve_cluster in pve_inventory[pve_cloud]:
@@ -160,6 +163,8 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
 
+        validate_cloud_dyn_inv(pve_inventory)
+
         for pve_cloud in pve_inventory:
             for pve_cluster in pve_inventory[pve_cloud]:
                 if pve_cluster + "." + pve_cloud == target_pve:
@@ -195,6 +200,8 @@ def get_pve_inventory(
     if os.path.exists(inv_path):
         with open(inv_path, "r") as file:
             dynamic_inventory = yaml.safe_load(file)
+
+        validate_cloud_dyn_inv(dynamic_inventory)
 
         if pve_cloud_domain in dynamic_inventory:
             # return the cloud domains inventory from here if we found it
@@ -341,6 +348,8 @@ def get_pve_inventory(
         with open(inv_path, "r") as file:
             dynamic_inventory = yaml.safe_load(file)
 
+        validate_cloud_dyn_inv(dynamic_inventory)
+        
         if pve_cloud_domain not in dynamic_inventory:
             raise RuntimeError(
                 f"{pve_cloud_domain} not in local dynamic inventory (~/.pve-cloud-dyn-inv.yaml created by `pvcli connect-cluster`)!"

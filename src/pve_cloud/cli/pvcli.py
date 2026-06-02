@@ -11,6 +11,8 @@ from proxmoxer import ProxmoxAPI
 
 from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig
 from pve_cloud.lib.inventory import *
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv
+
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
@@ -20,6 +22,7 @@ def init_dyn_inv():
     if os.path.exists(inv_path):
         with open(inv_path, "r") as file:
             dynamic_inventory = yaml.safe_load(file)
+        validate_cloud_dyn_inv(dynamic_inventory)
     else:
         # initialize empty
         dynamic_inventory = {}
@@ -147,6 +150,7 @@ def connect_remote_cluster(args):
                     }
 
                 print(f"writing dyn inv to {inv_path}")
+                validate_cloud_dyn_inv(dynamic_inventory)
                 with open(inv_path, "w") as file:
                     yaml.dump(dynamic_inventory, file)
 
@@ -240,6 +244,7 @@ def connect_cluster(args):
         }
 
     print(f"writing dyn inv to {inv_path}")
+    validate_cloud_dyn_inv(dynamic_inventory)
     with open(inv_path, "w") as file:
         yaml.dump(dynamic_inventory, file)
 
