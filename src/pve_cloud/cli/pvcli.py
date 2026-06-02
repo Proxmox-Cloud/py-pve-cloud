@@ -1,18 +1,19 @@
 import argparse
 import os
+import time
 
 import paramiko
+import pve_cloud._version as pxc_version
+import rpyc
 import yaml
+from fabric import Connection
 from proxmoxer import ProxmoxAPI
 
 from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig
 from pve_cloud.lib.inventory import *
-import pve_cloud._version as pxc_version
-from fabric import Connection
-import rpyc
-import time
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+
 
 def init_dyn_inv():
     # try load current dynamic inventory
@@ -22,7 +23,7 @@ def init_dyn_inv():
     else:
         # initialize empty
         dynamic_inventory = {}
-    
+
     return dynamic_inventory
 
 
@@ -43,17 +44,28 @@ def connect_remote_cluster(args):
 
         # install py-pve-cloud into the venv
         if args.local_pypi_ip:
-            jump_pve_host.run(f"~/.pxc-venv/bin/pip install --upgrade --index-url http://{args.local_pypi_ip}:8088/simple --trusted-host {args.local_pypi_ip} py-pve-cloud=={pxc_version.__version__}", hide=False)
+            jump_pve_host.run(
+                f"~/.pxc-venv/bin/pip install --upgrade --index-url http://{args.local_pypi_ip}:8088/simple --trusted-host {args.local_pypi_ip} py-pve-cloud=={pxc_version.__version__}",
+                hide=False,
+            )
         else:
-            jump_pve_host.run(f"~/.pxc-venv/bin/pip install --upgrade py-pve-cloud=={pxc_version.__version__}", hide=False)
+            jump_pve_host.run(
+                f"~/.pxc-venv/bin/pip install --upgrade py-pve-cloud=={pxc_version.__version__}",
+                hide=False,
+            )
 
         # run detached pxrpc server - we use this to execute python code remotely on the jump host
         # pkill -f pxrpc to cleanup
-        jump_pve_host.run(f"export PYTHONUNBUFFERED=1; ~/.pxc-venv/bin/pxrpc >> /var/log/pxrpc.log 2>&1", disown=True)
+        jump_pve_host.run(
+            f"export PYTHONUNBUFFERED=1; ~/.pxc-venv/bin/pxrpc >> /var/log/pxrpc.log 2>&1",
+            disown=True,
+        )
         time.sleep(3)
 
         # forward its port via fabric
-        with jump_pve_host.forward_local(local_port=10080, remote_port=10080, remote_host="127.0.0.1"):
+        with jump_pve_host.forward_local(
+            local_port=10080, remote_port=10080, remote_host="127.0.0.1"
+        ):
             # launch rpyc client to the forwarded port
             pxrpc = rpyc.connect("localhost", 10080)
             try:
@@ -77,14 +89,20 @@ def connect_remote_cluster(args):
                 cluster_name = pxrpc.root.get_pve_cluster_name()
                 print("pve cluster name", cluster_name)
 
-                if cluster_name in dynamic_inventory[pve_cloud_domain] and not args.force:
+                if (
+                    cluster_name in dynamic_inventory[pve_cloud_domain]
+                    and not args.force
+                ):
                     print(
                         f"cluster {cluster_name} already in dynamic inventory, add --force to overwrite current local inv."
                     )
                     return
-                
+
                 # overwrite on force / create fresh
-                dynamic_inventory[pve_cloud_domain][cluster_name] = { "pve_hosts": {}, "pve_jump_hosts": args.pve_jump_hosts.split(",") }
+                dynamic_inventory[pve_cloud_domain][cluster_name] = {
+                    "pve_hosts": {},
+                    "pve_jump_hosts": args.pve_jump_hosts.split(","),
+                }
 
                 # not present => add and safe the dynamic inventory
                 cluster_hosts = pxrpc.root.get_nodes()
@@ -108,7 +126,9 @@ def connect_remote_cluster(args):
                                 node_ip_address = iface["address"]
                                 break
                         else:
-                            if "gateway" in iface:  # otherwise fallback to iface with default gw
+                            if (
+                                "gateway" in iface
+                            ):  # otherwise fallback to iface with default gw
                                 if node_ip_address is not None:
                                     raise Exception(
                                         f"found multiple ifaces with gateways for node {node_name}"
@@ -119,7 +139,9 @@ def connect_remote_cluster(args):
                         raise Exception(f"Could not find ip for node {node_name}")
 
                     print(f"adding {node_name}")
-                    dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][node_name] = {
+                    dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][
+                        node_name
+                    ] = {
                         "ansible_user": "root",
                         "ansible_host": node_ip_address,
                     }
@@ -127,7 +149,6 @@ def connect_remote_cluster(args):
                 print(f"writing dyn inv to {inv_path}")
                 with open(inv_path, "w") as file:
                     yaml.dump(dynamic_inventory, file)
-
 
             finally:
                 # shut the rpyc server down
@@ -180,7 +201,7 @@ def connect_cluster(args):
         return
 
     # overwrite on force / create fresh
-    dynamic_inventory[pve_cloud_domain][cluster_name] = { "pve_hosts": {} }
+    dynamic_inventory[pve_cloud_domain][cluster_name] = {"pve_hosts": {}}
 
     # not present => add and safe the dynamic inventory
     cluster_hosts = proxmox.nodes.get()
@@ -304,7 +325,7 @@ def main():
         "--pve-jump-hosts",
         type=str,
         help="Comma seperated ips to remote proxmox hosts of a cluster. They will be configured as jump hosts on the local machines inventory.",
-        required=True
+        required=True,
     )
     remote_cluster_parser.add_argument(
         "--host-iface",
