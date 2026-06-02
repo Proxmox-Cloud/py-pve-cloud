@@ -14,7 +14,9 @@ dependencies = [
   "alembic==1.18.0",
   "paramiko==4.0.0",
   "proxmoxer==2.2.0",
-  "dnspython==2.8.0"
+  "dnspython==2.8.0",
+  "rpyc==6.0.2",
+  "fabric==3.2.3"
 ]
 dynamic = ["version"]
 
@@ -27,5 +29,6 @@ version = {attr = "pve_cloud._version.__version__"}
 [project.scripts]
 pvclu = "pve_cloud.cli.pvclu:main"
 pvcli = "pve_cloud.cli.pvcli:main"
+pxrpc = "pve_cloud.cli.pxrpc:main"
 
 

@@ -5,6 +5,7 @@ import subprocess
 
 import yaml
 from proxmoxer import ProxmoxAPI
+import paramiko
 
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 
@@ -21,6 +22,35 @@ def check_ssh_open(host):
                 sio.flush()
 
             return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+
+
+def check_ssh_open_jumphost(target_host, open_jump_host):
+    # use the jump host to perform ssh online check on our target host
+    jumpbox = paramiko.SSHClient()
+    jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    jumpbox.connect(open_jump_host, username='root')
+
+    jumpbox_transport = jumpbox.get_transport()
+    src_addr = ("127.0.0.1", 0)
+    dest_addr = (target_host, 22)
+    
+    try:
+        jumpbox_channel = jumpbox_transport.open_channel("direct-tcpip", dest_addr, src_addr)
+        jumpbox_channel.settimeout(3)
+        
+        # Use makefile() instead of socket.SocketIO to safely create a read/write stream
+        with jumpbox_channel.makefile("rwb") as sio:
+            # read ssh server answer
+            sio.readline()
+
+            # send client hello
+            sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
+            sio.flush()
+
+        return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 
@@ -158,8 +188,21 @@ def get_pve_inventory(
     skip_py_cloud_check=False,
     fetch_other_pve_hosts=False,
 ):
+    # first we try to load the manually created inventory via pvcli connect
+    # as it takes precedence over avahi
+    inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+    if os.path.exists(inv_path):
+        with open(inv_path, "r") as file:
+            dynamic_inventory = yaml.safe_load(file)
+
+        if pve_cloud_domain in dynamic_inventory:
+            # return the cloud domains inventory from here if we found it
+            return dynamic_inventory[pve_cloud_domain]
+
+
     if shutil.which("avahi-browse"):
-        # avahi is available
+        # if no cloud domain was found in local inventory file and avahi is available
+        # we get the inventory from here
 
         # call avahi-browse -rpt _pxc._tcp and find online host matching pve cloud domain
         # connect via ssh and fetch all other hosts via proxmox api => build inventory
@@ -231,7 +274,7 @@ def get_pve_inventory(
 
         if not fetch_other_pve_hosts:
             return pve_inventory  # return without doing inter api call resolution
-
+    
         # iterate over hosts and build pve inv via proxmox api
         # todo: this needs to be hugely optimized it blocks the grpc server
         for cluster_first, first_host in cloud_domain_first_hosts.items():
