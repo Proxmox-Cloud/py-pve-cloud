@@ -8,11 +8,10 @@ import rpyc
 import yaml
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig
 from pve_cloud.lib.inventory import *
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv
-
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 

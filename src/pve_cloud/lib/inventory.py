@@ -6,9 +6,9 @@ import subprocess
 import paramiko
 import yaml
 from proxmoxer import ProxmoxAPI
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 
 def check_ssh_open(host):
@@ -101,7 +101,7 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
 
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
-        
+
         validate_cloud_dyn_inv(pve_inventory)
 
         for pve_cloud in pve_inventory:
@@ -349,7 +349,7 @@ def get_pve_inventory(
             dynamic_inventory = yaml.safe_load(file)
 
         validate_cloud_dyn_inv(dynamic_inventory)
-        
+
         if pve_cloud_domain not in dynamic_inventory:
             raise RuntimeError(
                 f"{pve_cloud_domain} not in local dynamic inventory (~/.pve-cloud-dyn-inv.yaml created by `pvcli connect-cluster`)!"
