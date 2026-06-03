@@ -12,7 +12,7 @@ def shutdown():
     time.sleep(0.5)
     os._exit(0)
 
-
+# initialized / launched by pvcli connect_remote_cluster
 class InitService(rpyc.Service):
 
     def on_connect(self, conn):
