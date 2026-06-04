@@ -70,7 +70,6 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
                 if pve_cluster + "." + pve_cloud == target_pve:
                     return pve_cloud
 
-
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(
             ["avahi-browse", "-rpt", "_pxc._tcp"],
@@ -104,7 +103,6 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
 
                 if target_pve.endswith(cloud_domain):
                     return cloud_domain
-                
 
     raise Exception(f"Could not identify cloud domain for {target_pve}")
 
@@ -135,15 +133,18 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                             if not cluster_jump_host:
                                 continue
 
-
-                        for pve_host in pve_inventory[pve_cloud][pve_cluster]["pve_hosts"]:
+                        for pve_host in pve_inventory[pve_cloud][pve_cluster][
+                            "pve_hosts"
+                        ]:
                             # check if host is available
-                            pve_host_ip = pve_inventory[pve_cloud][pve_cluster]["pve_hosts"][pve_host][
-                                "ansible_host"
-                            ]
+                            pve_host_ip = pve_inventory[pve_cloud][pve_cluster][
+                                "pve_hosts"
+                            ][pve_host]["ansible_host"]
 
                             if cluster_jump_host:
-                                if not check_ssh_open_jumphost(pve_host_ip, cluster_jump_host):
+                                if not check_ssh_open_jumphost(
+                                    pve_host_ip, cluster_jump_host
+                                ):
                                     continue
                             else:
                                 if not check_ssh_open(pve_host_ip):
@@ -155,8 +156,10 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                                     pve_host_ip, jump_host=cluster_jump_host
                                 )  # validate that versions of dev machine and running on cluster match
 
-                            return pve_host_ip, cluster_jump_host # return the online host that conditionally got version checked
-                    
+                            return (
+                                pve_host_ip,
+                                cluster_jump_host,
+                            )  # return the online host that conditionally got version checked
 
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(

@@ -26,7 +26,9 @@ def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(proxmox_host, username="root", sock=jumpbox_channel) # tunnel if present
+    ssh.connect(
+        proxmox_host, username="root", sock=jumpbox_channel
+    )  # tunnel if present
 
     # since we need root we cant use sftp and root via ssh is disabled
     _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")

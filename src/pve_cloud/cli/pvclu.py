@@ -1,19 +1,19 @@
 import argparse
+import os
 import re
+import urllib.parse
 
 import dns.resolver
 import paramiko
 import yaml
-import os
-from pve_cloud.cli.pxrpc import launch_pxrpc
-
-from pve_cloud.lib.inventory import *
-import urllib.parse
 from fabric import Connection
+
+from pve_cloud.cli.pxrpc import launch_pxrpc
+from pve_cloud.lib.inventory import *
 
 
 def get_cluster_vars(pve_host, jump_host=None):
-    
+
     jumpbox_channel = None
     if jump_host:
         jumpbox = paramiko.SSHClient()
@@ -68,29 +68,34 @@ def get_cloud_env(pve_host):
 def get_online_pve_host_prsr(args):
     pve_host, jump_host = get_online_pve_host(args.target_pve, suppress_warnings=True)
     if jump_host:
-        raise NotImplemented("Jump host functionality not implemented for get-online-host yet!")
-    print(
-        f"export PVE_ANSIBLE_HOST='{pve_host}'"
-    )
+        raise NotImplemented(
+            "Jump host functionality not implemented for get-online-host yet!"
+        )
+    print(f"export PVE_ANSIBLE_HOST='{pve_host}'")
+
 
 # works only for cluster with an external exposed control plane
 def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jump_host):
     # launch remote pxrpc service
     with launch_pxrpc(jump_host) as (pxrpc, jump_host):
         ddns_ips = pxrpc.root.resolve_k8s_master(
-            [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]], 
-            f"masters-{stack_name}.{cluster_vars['pve_cloud_domain']}"
+            [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]],
+            f"masters-{stack_name}.{cluster_vars['pve_cloud_domain']}",
         )
-        
+
         if not ddns_ips:
             raise Exception("No master could be found via remote DNS!")
-        
+
         # use jump host to open tunneled ssh to master node now
-        with Connection(host=ddns_ips[0], user="admin", gateway=jump_host) as master_node:
+        with Connection(
+            host=ddns_ips[0], user="admin", gateway=jump_host
+        ) as master_node:
             result = master_node.run("sudo cat /etc/kubernetes/admin.conf")
             admin_conf = yaml.safe_load(result.stdout.strip())
 
-            admin_conf["clusters"][0]["cluster"]["server"] = f"https://{external_san}:6443"
+            admin_conf["clusters"][0]["cluster"][
+                "server"
+            ] = f"https://{external_san}:6443"
             admin_conf["clusters"][0]["name"] = stack_name
 
             admin_conf["contexts"][0]["context"]["cluster"] = stack_name
@@ -99,7 +104,6 @@ def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jum
             admin_conf["current-context"] = stack_name
 
             return yaml.safe_dump(admin_conf)
-    
 
 
 def get_ssh_master_kubeconfig(cluster_vars, stack_name):
@@ -153,13 +157,17 @@ def export_pg_conn_str(args):
     jump_hosts = None
     for cluster in pve_inventory:
         if args.cloud_domain:
-            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))["ansible_host"]
+            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))[
+                "ansible_host"
+            ]
             if "jump_hosts" in pve_inventory[cluster]:
                 jump_hosts = pve_inventory[cluster]["jump_hosts"]
 
             break
         elif args.target_pve.startswith(cluster):
-            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))["ansible_host"]
+            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))[
+                "ansible_host"
+            ]
             if "jump_hosts" in pve_inventory[cluster]:
                 jump_hosts = pve_inventory[cluster]["jump_hosts"]
             break
@@ -179,9 +187,11 @@ def export_pg_conn_str(args):
             if check_ssh_open(jump_host):
                 online_jump_host = jump_host
                 break
-        
+
         if not online_jump_host:
-            raise RuntimeError(f"Jump hosts for cluster defined but none online / reachable!")
+            raise RuntimeError(
+                f"Jump hosts for cluster defined but none online / reachable!"
+            )
 
         # pkill existing forwards and cleanup socket
         print(

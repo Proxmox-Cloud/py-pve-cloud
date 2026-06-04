@@ -1,7 +1,5 @@
 import argparse
 import os
-import time
-import socket
 
 import paramiko
 import pve_cloud._version as pxc_version
@@ -10,9 +8,9 @@ import yaml
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
-from pve_cloud.cli.pxrpc import launch_pxrpc
 
 from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig
+from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import *
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
@@ -62,10 +60,7 @@ def connect_remote_cluster(args):
         cluster_name = pxrpc.root.get_pve_cluster_name()
         print("pve cluster name", cluster_name)
 
-        if (
-            cluster_name in dynamic_inventory[pve_cloud_domain]
-            and not args.force
-        ):
+        if cluster_name in dynamic_inventory[pve_cloud_domain] and not args.force:
             print(
                 f"cluster {cluster_name} already in dynamic inventory, add --force to overwrite current local inv."
             )
@@ -123,8 +118,6 @@ def connect_remote_cluster(args):
         validate_cloud_dyn_inv(dynamic_inventory)
         with open(inv_path, "w") as file:
             yaml.dump(dynamic_inventory, file)
-
-
 
 
 def connect_cluster(args):
@@ -291,7 +284,9 @@ def get_parser():
         "--force", action="store_true", help="Will read the cluster if set."
     )
     connect_cluster_parser.add_argument(
-        "--pve-cloud-domain", type=str, help="This skips manual input querying for the domain if the cluster gets initialized the first time."
+        "--pve-cloud-domain",
+        type=str,
+        help="This skips manual input querying for the domain if the cluster gets initialized the first time.",
     )
     connect_cluster_parser.set_defaults(func=connect_cluster)
 
@@ -321,7 +316,9 @@ def get_parser():
         "--force", action="store_true", help="Will read the cluster if set."
     )
     remote_cluster_parser.add_argument(
-        "--pve-cloud-domain", type=str, help="This skips manual input querying for the domain if the cluster gets initialized the first time."
+        "--pve-cloud-domain",
+        type=str,
+        help="This skips manual input querying for the domain if the cluster gets initialized the first time.",
     )
     remote_cluster_parser.add_argument(
         "--local-pypi-ip",

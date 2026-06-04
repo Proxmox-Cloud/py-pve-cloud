@@ -1,20 +1,19 @@
 import os
+import socket
+import sys
 import threading
 import time
-import sys
-import os
-import time
-import socket
+from contextlib import contextmanager
+
 import dns.resolver
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
-from pve_cloud.orm.alchemy import AcmeX509
 import pve_cloud._version as pxc_version
 import rpyc
-import rpyc
-from proxmoxer import ProxmoxAPI
-from contextlib import contextmanager
 from fabric import Connection
+from proxmoxer import ProxmoxAPI
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from pve_cloud.orm.alchemy import AcmeX509
 
 
 # rpyc doesnt have a clean shutdown methodology
@@ -62,10 +61,10 @@ class PxRpcService(rpyc.Service):
         ddns_ips = [rdata.to_text() for rdata in ddns_answer]
 
         return ddns_ips
-    
+
     def exposed_e2e_inject_cert(self, pg_conn_str_orm, stack_fqdn, record0):
         engine = create_engine(pg_conn_str_orm)
-        
+
         # update certs and mirror pull secret
         with Session(engine) as session:
             copy_cert = AcmeX509(
@@ -78,8 +77,10 @@ class PxRpcService(rpyc.Service):
             session.merge(copy_cert)
             session.commit()
 
+
 def main():
     from rpyc.utils.server import ThreadedServer
+
     print("launching on", sys.argv[1])
     t = ThreadedServer(PxRpcService, port=int(sys.argv[1]))
     t.start()
@@ -93,14 +94,16 @@ def launch_pxrpc(jump_host, pve_host, local_pypi_ip=None):
         with Connection(host=pve_host, user="root", gateway=jump_host) as pve_host:
 
             # setup venv if it doesnt exist
-            if pve_host.run(f"[ -d '/root/.pxc-venv' ]", warn=True, hide=True).exited != 0:
+            if (
+                pve_host.run(f"[ -d '/root/.pxc-venv' ]", warn=True, hide=True).exited
+                != 0
+            ):
 
                 # install python venv
                 pve_host.run("apt install python3-venv -y", hide=False)
 
                 # create versionized venv - to avoid collision of multiple admins
                 pve_host.run(f"python3 -m venv /root/.pxc-venv", hide=False)
-
 
             # install latest py-pve-cloud into the venv
             if local_pypi_ip:
@@ -115,8 +118,11 @@ def launch_pxrpc(jump_host, pve_host, local_pypi_ip=None):
                 )
 
             # get an random open port for launching pxrpc server
-            get_open_port_remote = pve_host.run('python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind((\\"\\", 0)); print(s.getsockname()[1]); s.close()"', hide=True)
-            
+            get_open_port_remote = pve_host.run(
+                'python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.bind((\\"\\", 0)); print(s.getsockname()[1]); s.close()"',
+                hide=True,
+            )
+
             open_port_remote = int(get_open_port_remote.stdout.strip())
             print("open port remote", open_port_remote)
 
@@ -139,13 +145,14 @@ def launch_pxrpc(jump_host, pve_host, local_pypi_ip=None):
 
             # forward its port via fabric
             with pve_host.forward_local(
-                local_port=local_open_port, remote_port=open_port_remote, remote_host="127.0.0.1"
+                local_port=local_open_port,
+                remote_port=open_port_remote,
+                remote_host="127.0.0.1",
             ):
                 # launch rpyc client to the forwarded port
                 pxrpc = rpyc.connect("localhost", local_open_port)
 
-                yield pxrpc, pve_host # return to do whatever the caller need
+                yield pxrpc, pve_host  # return to do whatever the caller need
 
                 # shut it down
                 pxrpc.root.shutdown()
-        
