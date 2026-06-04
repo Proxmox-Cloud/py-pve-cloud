@@ -58,6 +58,19 @@ def check_ssh_open_jumphost(target_host, open_jump_host):
 
 
 def get_cloud_domain(target_pve, suppress_warnings=False):
+    inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+    if os.path.exists(inv_path):
+        with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
+            pve_inventory = yaml.safe_load(f)
+
+        validate_cloud_dyn_inv(pve_inventory)
+
+        for pve_cloud in pve_inventory:
+            for pve_cluster in pve_inventory[pve_cloud]:
+                if pve_cluster + "." + pve_cloud == target_pve:
+                    return pve_cloud
+
+
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(
             ["avahi-browse", "-rpt", "_pxc._tcp"],
@@ -91,28 +104,60 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
 
                 if target_pve.endswith(cloud_domain):
                     return cloud_domain
+                
 
-        raise RuntimeError("Could not get cloud domain via avahi mdns!")
-    else:
-        if not suppress_warnings:
-            print(
-                "avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!"
-            )
+    raise Exception(f"Could not identify cloud domain for {target_pve}")
 
+
+# returns online proxmox host for inventory and jumphost as second variable if defined
+def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check=False):
+
+    inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+    if os.path.exists(inv_path):
         with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
             pve_inventory = yaml.safe_load(f)
 
-        validate_cloud_dyn_inv(pve_inventory)
+            validate_cloud_dyn_inv(pve_inventory)
 
-        for pve_cloud in pve_inventory:
-            for pve_cluster in pve_inventory[pve_cloud]:
-                if pve_cluster + "." + pve_cloud == target_pve:
-                    return pve_cloud
+            for pve_cloud in pve_inventory:
+                for pve_cluster in pve_inventory[pve_cloud]:
+                    if pve_cluster + "." + pve_cloud == target_pve:
 
-        raise Exception(f"Could not identify cloud domain for {target_pve}")
+                        # first we check if jump host is defined
+                        cluster_jump_host = None
+                        if "jump_hosts" in pve_inventory[pve_cluster]:
+                            # jump hosts for cluster configured => find an online one
+                            for jump_host in pve_inventory[pve_cluster]["jump_hosts"]:
+                                if check_ssh_open(jump_host):
+                                    cluster_jump_host = jump_host
+                                    break
+
+                            if not cluster_jump_host:
+                                continue
 
 
-def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check=False):
+                        for pve_host in pve_inventory[pve_cloud][pve_cluster]["pve_hosts"]:
+                            # check if host is available
+                            pve_host_ip = pve_inventory[pve_cloud][pve_cluster]["pve_hosts"][pve_host][
+                                "ansible_host"
+                            ]
+
+                            if cluster_jump_host:
+                                if not check_ssh_open_jumphost(pve_host_ip, cluster_jump_host):
+                                    continue
+                            else:
+                                if not check_ssh_open(pve_host_ip):
+                                    continue
+
+                            # if we got here it means the host is online, we now perform the version check
+                            if not skip_py_cloud_check:
+                                raise_on_py_cloud_missmatch(
+                                    pve_host_ip, jump_host=cluster_jump_host
+                                )  # validate that versions of dev machine and running on cluster match
+
+                            return pve_host_ip, cluster_jump_host # return the online host that conditionally got version checked
+                    
+
     if shutil.which("avahi-browse"):
         avahi_disc = subprocess.run(
             ["avahi-browse", "-rpt", "_pxc._tcp"],
@@ -151,39 +196,10 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                             host_ip
                         )  # validate that versions of dev machine and running on cluster match
 
-                    return host_ip
+                    return host_ip, None
 
         raise RuntimeError(f"No online host found for {target_pve}!")
     else:
-        if not suppress_warnings:
-            print(
-                "avahi-browse not available, falling back to local inventory file from pvcli connect-cluster!"
-            )
-
-        with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
-            pve_inventory = yaml.safe_load(f)
-
-        validate_cloud_dyn_inv(pve_inventory)
-
-        for pve_cloud in pve_inventory:
-            for pve_cluster in pve_inventory[pve_cloud]:
-                if pve_cluster + "." + pve_cloud == target_pve:
-                    for pve_host in pve_inventory[pve_cloud][pve_cluster]:
-                        # check if host is available
-                        pve_host_ip = pve_inventory[pve_cloud][pve_cluster][pve_host][
-                            "ansible_host"
-                        ]
-
-                        if not check_ssh_open(pve_host_ip):
-                            continue
-
-                        # if we got here it means the host is online, we now perform the version check
-                        if not skip_py_cloud_check:
-                            raise_on_py_cloud_missmatch(
-                                pve_host_ip
-                            )  # validate that versions of dev machine and running on cluster match
-
-                        return pve_host_ip  # return the online host that conditionally got version checked
 
         raise RuntimeError(f"Could not find online pve host for {target_pve}")
 
