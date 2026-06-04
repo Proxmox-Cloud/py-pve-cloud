@@ -7,7 +7,7 @@ import yaml
 
 def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
     # dont raise in tdd
-    if os.getenv("PYTEST_CURRENT_TEST"):
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TDDOG_LOCAL_IFACE"):
         return
 
     jumpbox_channel = None

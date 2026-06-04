@@ -9,7 +9,7 @@ from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
-from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig
+from pve_cloud.cli.pvclu import get_ssh_master_kubeconfig, get_ssh_remote_master_kubeconfig
 from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import *
 
@@ -37,7 +37,7 @@ def connect_remote_cluster(args):
     # during setup we assume all jump hosts are online
     host = args.jump_hosts.split(",")[0]
 
-    with launch_pxrpc(host, args.pve_host, args.local_pypi_ip) as (pxrpc, pve_host):
+    with launch_pxrpc(host, args.pve_host, init_venv=True, local_pypi_ip=args.local_pypi_ip) as (pxrpc, pve_host):
         # first we check if the cluster is already part of a proxmox cloud
         result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
         cluster_vars = yaml.safe_load(result.stdout.strip())
@@ -238,13 +238,43 @@ def print_kubeconfig(args):
         print("could not find target cluster in pve inventory!")
         return
 
-    first_host = list(pve_inventory[target_cluster].keys())[0]
+    first_host = list(pve_inventory[target_cluster]["pve_hosts"].keys())[0]
+
+    online_jump_host = None
+    if "jump_hosts" in pve_inventory[target_cluster]:
+        # jump hosts for cluster configured => find an online one
+        for jump_host in pve_inventory[target_cluster]["jump_hosts"]:
+            if check_ssh_open(jump_host):
+                online_jump_host = jump_host
+                break
+        
+        if not online_jump_host:
+            print("No jump host of target cluster is online / reachable!")
+            return
+
+    if not "extra_control_plane_sans" in inventory or not inventory["extra_control_plane_sans"]:
+        print("kubernetes cluster is not publicly reachable!")
+        return
+
+    jumpbox_channel = None
+    if online_jump_host:
+        jumpbox = paramiko.SSHClient()
+        jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        jumpbox.connect(online_jump_host, username="root")
+
+        jumpbox_transport = jumpbox.get_transport()
+        src_addr = ("127.0.0.1", 0)
+        dest_addr = (pve_inventory[target_cluster][first_host]["ansible_host"], 22)
+
+        jumpbox_channel = jumpbox_transport.open_channel(
+            "direct-tcpip", dest_addr, src_addr
+        )
 
     # connect to the first pve host in the dyn inv, assumes they are all online
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(
-        pve_inventory[target_cluster][first_host]["ansible_host"], username="root"
+        pve_inventory[target_cluster][first_host]["ansible_host"], username="root", sock=jumpbox_channel
     )
 
     # since we need root we cant use sftp and root via ssh is disabled
@@ -252,7 +282,10 @@ def print_kubeconfig(args):
 
     cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
 
-    print(get_ssh_master_kubeconfig(cluster_vars, inventory["stack_name"]))
+    if online_jump_host:
+        print(get_ssh_remote_master_kubeconfig(cluster_vars, inventory["stack_name"], inventory["extra_control_plane_sans"][0], online_jump_host, pve_inventory[target_cluster][first_host]["ansible_host"]))
+    else:
+        print(get_ssh_master_kubeconfig(cluster_vars, inventory["stack_name"]))
 
 
 def get_parser():

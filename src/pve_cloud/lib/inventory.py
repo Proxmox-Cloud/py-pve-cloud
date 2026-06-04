@@ -108,6 +108,7 @@ def get_cloud_domain(target_pve, suppress_warnings=False):
 
 
 # returns online proxmox host for inventory and jumphost as second variable if defined
+# todo: this return should be refactored to a dataclass with nullable jump host
 def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check=False):
 
     inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
@@ -123,9 +124,9 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
 
                         # first we check if jump host is defined
                         cluster_jump_host = None
-                        if "jump_hosts" in pve_inventory[pve_cluster]:
+                        if "jump_hosts" in pve_inventory[pve_cloud][pve_cluster]:
                             # jump hosts for cluster configured => find an online one
-                            for jump_host in pve_inventory[pve_cluster]["jump_hosts"]:
+                            for jump_host in pve_inventory[pve_cloud][pve_cluster]["jump_hosts"]:
                                 if check_ssh_open(jump_host):
                                     cluster_jump_host = jump_host
                                     break

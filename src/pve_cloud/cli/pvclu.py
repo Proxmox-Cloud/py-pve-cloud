@@ -75,9 +75,9 @@ def get_online_pve_host_prsr(args):
 
 
 # works only for cluster with an external exposed control plane
-def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jump_host):
+def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jump_host, pve_host):
     # launch remote pxrpc service
-    with launch_pxrpc(jump_host) as (pxrpc, jump_host):
+    with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host):
         ddns_ips = pxrpc.root.resolve_k8s_master(
             [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]],
             f"masters-{stack_name}.{cluster_vars['pve_cloud_domain']}",
@@ -86,9 +86,9 @@ def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jum
         if not ddns_ips:
             raise Exception("No master could be found via remote DNS!")
 
-        # use jump host to open tunneled ssh to master node now
+        # use tunneled pve host to open connection to master node
         with Connection(
-            host=ddns_ips[0], user="admin", gateway=jump_host
+            host=ddns_ips[0], user="admin", gateway=pve_host
         ) as master_node:
             result = master_node.run("sudo cat /etc/kubernetes/admin.conf")
             admin_conf = yaml.safe_load(result.stdout.strip())
