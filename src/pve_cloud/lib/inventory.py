@@ -126,7 +126,9 @@ def get_online_pve_host(target_pve, suppress_warnings=False, skip_py_cloud_check
                         cluster_jump_host = None
                         if "jump_hosts" in pve_inventory[pve_cloud][pve_cluster]:
                             # jump hosts for cluster configured => find an online one
-                            for jump_host in pve_inventory[pve_cloud][pve_cluster]["jump_hosts"]:
+                            for jump_host in pve_inventory[pve_cloud][pve_cluster][
+                                "jump_hosts"
+                            ]:
                                 if check_ssh_open(jump_host):
                                     cluster_jump_host = jump_host
                                     break

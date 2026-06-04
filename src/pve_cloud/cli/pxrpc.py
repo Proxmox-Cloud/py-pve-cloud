@@ -1,10 +1,10 @@
+import json
 import os
 import socket
 import sys
 import threading
 import time
 from contextlib import contextmanager
-from sqlalchemy.exc import IntegrityError
 
 import dns.resolver
 import pve_cloud._version as pxc_version
@@ -12,10 +12,12 @@ import rpyc
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from sqlalchemy import create_engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from pve_cloud.orm.alchemy import AcmeX509, ProxmoxCloudSecrets, VirtualMachineVars
-import json
+from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
+                                   VirtualMachineVars)
+
 
 # rpyc doesnt have a clean shutdown methodology
 # this is the cleanest i found without triggerin eof on the clients side
@@ -78,8 +80,9 @@ class PxRpcService(rpyc.Service):
             session.merge(copy_cert)
             session.commit()
 
-
-    def exposed_inject_cloud_secret(self, pg_conn_str_orm, cloud_domain, secret_name, secret_data_json, secret_type):
+    def exposed_inject_cloud_secret(
+        self, pg_conn_str_orm, cloud_domain, secret_name, secret_data_json, secret_type
+    ):
         engine = create_engine(pg_conn_str_orm)
 
         with Session(engine) as session:
@@ -99,7 +102,6 @@ class PxRpcService(rpyc.Service):
                 session.rollback()
                 return False
 
-    
     def exposed_delete_cloud_secret(self, pg_conn_str_orm, cloud_domain, secret_name):
 
         engine = create_engine(pg_conn_str_orm)
@@ -112,7 +114,6 @@ class PxRpcService(rpyc.Service):
 
             result = session.execute(stmt)
             session.commit()
-
 
     def exposed_get_cloud_secret(self, pg_conn_str_orm, cloud_domain, secret_name):
 
@@ -127,10 +128,9 @@ class PxRpcService(rpyc.Service):
 
         if not record:
             return ""
-        
+
         secret_data_json = json.dumps(record.secret_data)
         return secret_data_json
-    
 
     def exposed_get_cloud_secrets(self, pg_conn_str_orm, cloud_domain, secret_type):
         engine = create_engine(pg_conn_str_orm)
@@ -142,9 +142,10 @@ class PxRpcService(rpyc.Service):
             )
             records = session.scalars(stmt).all()
 
-        secrets_json = json.dumps({record.secret_name: record.secret_data for record in records})
+        secrets_json = json.dumps(
+            {record.secret_name: record.secret_data for record in records}
+        )
         return secrets_json
-    
 
     def exposed_get_vm_vars_blake(self, pg_conn_str_orm, blake_ids_json, cloud_domain):
         engine = create_engine(pg_conn_str_orm)
@@ -157,8 +158,8 @@ class PxRpcService(rpyc.Service):
                 VirtualMachineVars.cloud_domain == cloud_domain,
             )
             records = session.scalars(stmt).all()
-        
-        vars_json = json.dumps({ entry.blake_id: entry.vm_vars for entry in records })
+
+        vars_json = json.dumps({entry.blake_id: entry.vm_vars for entry in records})
         return vars_json
 
 
@@ -180,7 +181,9 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
             # this is only for the initial connect-remote-cluster on a host that is completely fresh
             if init_venv:
                 if (
-                    pve_host.run(f"[ -d '/root/.pxc-venv' ]", warn=True, hide=True).exited
+                    pve_host.run(
+                        f"[ -d '/root/.pxc-venv' ]", warn=True, hide=True
+                    ).exited
                     != 0
                 ):
 
@@ -232,7 +235,7 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
                 remote_port=open_port_remote,
                 remote_host="127.0.0.1",
             ):
-                time.sleep(3) # time for server to start
+                time.sleep(3)  # time for server to start
                 # launch rpyc client to the forwarded port
                 pxrpc = rpyc.connect("localhost", local_open_port)
 

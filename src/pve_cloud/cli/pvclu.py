@@ -75,7 +75,9 @@ def get_online_pve_host_prsr(args):
 
 
 # works only for cluster with an external exposed control plane
-def get_ssh_remote_master_kubeconfig(cluster_vars, stack_name, external_san, jump_host, pve_host):
+def get_ssh_remote_master_kubeconfig(
+    cluster_vars, stack_name, external_san, jump_host, pve_host
+):
     # launch remote pxrpc service
     with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host):
         ddns_ips = pxrpc.root.resolve_k8s_master(
