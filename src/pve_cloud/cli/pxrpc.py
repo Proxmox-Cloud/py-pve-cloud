@@ -1,10 +1,13 @@
+import asyncio
 import json
 import os
 import socket
 import sys
 import threading
 import time
-from contextlib import contextmanager
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import asynccontextmanager, contextmanager
+
 import dns.resolver
 import pve_cloud._version as pxc_version
 import rpyc
@@ -13,12 +16,9 @@ from proxmoxer import ProxmoxAPI
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-import asyncio
-from contextlib import asynccontextmanager
+
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
-
-from concurrent.futures import ProcessPoolExecutor
 
 
 # initialized / launched by pvcli connect_remote_cluster
@@ -30,14 +30,14 @@ class PxRpcService(rpyc.Service):
 
     def on_connect(self, conn):
         pass
-        
+
     def on_disconnect(self, conn):
         pass
-    
+
     # rpyc doesnt have a clean shutdown methodology
     # this is the cleanest i found without triggerin eof on the clients side
     def shutdown(self):
-        time.sleep(5) # workers get more time to shut down
+        time.sleep(5)  # workers get more time to shut down
         os._exit(0)
 
     def exposed_e2e_return(self):
@@ -174,7 +174,7 @@ class PxRpcService(rpyc.Service):
 
 # launch the rpc server
 def main():
-    from rpyc.utils.server import ThreadedServer, ForkingServer
+    from rpyc.utils.server import ForkingServer, ThreadedServer
 
     print("launching on", sys.argv[1])
 
@@ -183,17 +183,22 @@ def main():
         t = ThreadedServer(PxRpcService, port=int(sys.argv[1]))
         t.start()
 
-    elif sys.argv[2] == "FORKING": # forking launch for paralellism
+    elif sys.argv[2] == "FORKING":  # forking launch for paralellism
         f = ForkingServer(PxRpcService, port=int(sys.argv[1]))
         f.start()
     else:
         raise RuntimeError("Unknown / missing 2 string arg THREADED/FORKING")
 
+
 @contextmanager
-def _launch_pxrpc_base(jump_host, pve_host, rpyc_server_type, init_venv=False, local_pypi_ip=None):
+def _launch_pxrpc_base(
+    jump_host, pve_host, rpyc_server_type, init_venv=False, local_pypi_ip=None
+):
     print("connecting to", jump_host, pve_host)
     with Connection(host=jump_host, user="root") as jump_host_conn:
-        with Connection(host=pve_host, user="root", gateway=jump_host_conn) as pve_host_conn:
+        with Connection(
+            host=pve_host, user="root", gateway=jump_host_conn
+        ) as pve_host_conn:
             # we only init the venv conditionally, the pve_setup_clusters playbook does the install for all hosts
             # this is only for the initial connect-remote-cluster on a host that is completely fresh
             if init_venv:
@@ -254,12 +259,19 @@ def _launch_pxrpc_base(jump_host, pve_host, rpyc_server_type, init_venv=False, l
             ):
 
                 time.sleep(3)  # time for server to start
-                yield local_open_port, pve_host_conn # handle conn from here different based on sync / async
+                yield local_open_port, pve_host_conn  # handle conn from here different based on sync / async
+
 
 # client launch contextmanagers:
 @contextmanager
 def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
-    with _launch_pxrpc_base(jump_host, pve_host, "THREADED", init_venv=init_venv, local_pypi_ip=local_pypi_ip) as (local_open_port, pve_host_conn):
+    with _launch_pxrpc_base(
+        jump_host,
+        pve_host,
+        "THREADED",
+        init_venv=init_venv,
+        local_pypi_ip=local_pypi_ip,
+    ) as (local_open_port, pve_host_conn):
         # launch rpyc client to the forwarded port
         pxrpc = rpyc.connect("localhost", local_open_port)
 
@@ -275,6 +287,7 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
 
 # init rpyc connection once per worker in processpoolexecutor initializer
 worker_rpyc_client = None
+
 
 def exit_worker(exit_id):
     global worker_rpyc_client
@@ -323,15 +336,19 @@ class AsyncRPyCPoolWrapper:
             )
 
         return dispatcher
-    
+
 
 @asynccontextmanager
 async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
-    with _launch_pxrpc_base(jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip) as (local_open_port, pve_host_conn):
+    with _launch_pxrpc_base(
+        jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip
+    ) as (local_open_port, pve_host_conn):
 
-        with ProcessPoolExecutor(max_workers=4, initializer=init_rpyc_worker, initargs=(local_open_port,)) as pool:
+        with ProcessPoolExecutor(
+            max_workers=4, initializer=init_rpyc_worker, initargs=(local_open_port,)
+        ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
-        
+
             yield pxrpc, pve_host_conn  # return to do whatever the caller need
 
             print("invoking delayed remote shutdown function")
@@ -339,4 +356,6 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
 
             # close all connection of the workers
             print("sending pool shutdown")
-            list(pool.map(exit_worker, range(4))) # list/() is critical to yield the generator
+            list(
+                pool.map(exit_worker, range(4))
+            )  # list/() is critical to yield the generator
