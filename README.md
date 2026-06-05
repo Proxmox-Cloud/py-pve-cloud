@@ -19,3 +19,14 @@ export PG_CONN_STR=postgresql+psycopg2://postgres:$PATRONI_PASS@$PROXY_IP:5000/p
 ```
 
 To create a new migration the database needs to be on the latest version, run `alembic upgrade head` to upgrade it.
+
+## SSH
+
+This project heavily relies on ssh connections and tunnels to accomplish its goals.
+
+* paramiko / fabric: this is used for tunneling and forwarding through these tunnels
+* asyncssh: this is used for simple tunneling and executing commands, where speed is needed
+
+TODO: in the future asyncssh could be refactored out in favour of a processpoolexecutor + async context implementation
+
+We also use rpyc to launch a remote server
