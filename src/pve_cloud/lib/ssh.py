@@ -190,7 +190,7 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
 
 @asynccontextmanager
 async def connect_host_async(
-    host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
+    host: str, jump_host: str = None, host_port: int = 22, user: str = "root", jump_user: str = "root"
 ):
     jc = None
     if jump_host:
@@ -203,6 +203,7 @@ async def connect_host_async(
             known_hosts=None,
             # optionally pass tunnel here => equivalent to ansible ProxyJump
             tunnel=jc,
+            host_port=host_port
         ) as conn:
             yield conn
 
