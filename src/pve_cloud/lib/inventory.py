@@ -4,12 +4,12 @@ import subprocess
 from types import SimpleNamespace
 
 import paramiko
+import pve_cloud._version
 import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun, connect_host
-import pve_cloud._version
 
 
 def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
@@ -285,8 +285,12 @@ def get_online_pve_host(pve_inventory, target_cluster):
 
 def get_online_pve_host_from_target_pve(target_pve, skip_py_cloud_check=False):
     cloud_domain = get_cloud_domain(target_pve)
-    pve_inventory = get_pve_inventory(cloud_domain, skip_py_cloud_check=skip_py_cloud_check)
-    target_cluster = get_target_cluster(pve_inventory, target_pve, target_cloud_domain=cloud_domain)
+    pve_inventory = get_pve_inventory(
+        cloud_domain, skip_py_cloud_check=skip_py_cloud_check
+    )
+    target_cluster = get_target_cluster(
+        pve_inventory, target_pve, target_cloud_domain=cloud_domain
+    )
 
     return get_online_pve_host(pve_inventory, target_cluster)
 
@@ -299,5 +303,3 @@ def get_cluster_vars(pve_host, jump_host=None):
         cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
 
         return cluster_vars
-    
-

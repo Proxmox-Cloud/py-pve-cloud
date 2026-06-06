@@ -44,9 +44,6 @@ def connect_host(
             jumpbox.close()
 
 
-
-
-
 def check_ssh_open_tun(tun: paramiko.Channel):
     try:
         tun.settimeout(3)
