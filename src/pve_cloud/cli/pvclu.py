@@ -8,7 +8,9 @@ import yaml
 from fabric import Connection
 
 from pve_cloud.cli.pxrpc import launch_pxrpc
-from pve_cloud.lib.inventory import get_online_pve_host_from_target_pve, get_cloud_domain, get_online_pve_host, get_pve_inventory, get_target_cluster
+from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
+                                     get_online_pve_host_from_target_pve,
+                                     get_pve_inventory, get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
 
 
