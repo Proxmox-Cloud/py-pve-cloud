@@ -1,23 +1,20 @@
 import argparse
 import os
-
-import paramiko
-import pve_cloud._version as pxc_version
-import rpyc
 import yaml
-from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
-                                 get_ssh_remote_master_kubeconfig)
+                                 get_ssh_remote_master_kubeconfig,)
 from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import *
+from pve_cloud.lib.ssh import connect_host, get_cluster_vars
+from types import SimpleNamespace
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
-
-def init_dyn_inv():
+# init_funcs needs
+def init_dyn_inv(args, init_funcs):
     # try load current dynamic inventory
     if os.path.exists(inv_path):
         with open(inv_path, "r") as file:
@@ -27,114 +24,7 @@ def init_dyn_inv():
         # initialize empty
         dynamic_inventory = {}
 
-    return dynamic_inventory
-
-
-# todo: rpyc is probably overkill here and could instead use remove pvesh get command
-# either remove in the future or other good usecases are found. terraform prov forwarding?
-def connect_remote_cluster(args):
-    dynamic_inventory = init_dyn_inv()
-
-    # during setup we assume all jump hosts are online
-    host = args.jump_hosts.split(",")[0]
-
-    with launch_pxrpc(
-        host, args.pve_host, init_venv=True, local_pypi_ip=args.local_pypi_ip
-    ) as (pxrpc, pve_host):
-        # first we check if the cluster is already part of a proxmox cloud
-        result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
-        cluster_vars = yaml.safe_load(result.stdout.strip())
-
-        if not cluster_vars:
-            # cluster has not been yet initialized
-            if not args.pve_cloud_domain:
-                pve_cloud_domain = input(
-                    "Cluster has not yet been fully initialized, assign the cluster a cloud domain and press ENTER:"
-                )
-            else:
-                pve_cloud_domain = args.pve_cloud_domain
-        else:
-            pve_cloud_domain = cluster_vars["pve_cloud_domain"]
-
-        # init cloud domain if not there
-        if pve_cloud_domain not in dynamic_inventory:
-            dynamic_inventory[pve_cloud_domain] = {}
-
-        cluster_name = pxrpc.root.get_pve_cluster_name()
-        print("pve cluster name", cluster_name)
-
-        if cluster_name in dynamic_inventory[pve_cloud_domain] and not args.force:
-            print(
-                f"cluster {cluster_name} already in dynamic inventory, add --force to overwrite current local inv."
-            )
-            return
-
-        # overwrite on force / create fresh
-        dynamic_inventory[pve_cloud_domain][cluster_name] = {
-            "pve_hosts": {},
-            "jump_hosts": args.jump_hosts.split(","),
-        }
-
-        # not present => add and safe the dynamic inventory
-        cluster_hosts = pxrpc.root.get_nodes()
-        print("cluster_hosts", cluster_hosts)
-
-        for node in cluster_hosts:
-            node_name = node["node"]
-
-            if node["status"] == "offline":
-                print(f"skipping offline node {node_name}")
-                continue
-
-            # get the main ip
-            ifaces = pxrpc.root.get_node_network(node_name)
-            print("ifaces", ifaces)
-            node_ip_address = None
-            for iface in ifaces:
-                # when specified only take the host ip from the special iface
-                if args.host_iface:
-                    if iface["iface"] == args.host_iface:
-                        node_ip_address = iface["address"]
-                        break
-                else:
-                    if (
-                        "gateway" in iface
-                    ):  # otherwise fallback to iface with default gw
-                        if node_ip_address is not None:
-                            raise Exception(
-                                f"found multiple ifaces with gateways for node {node_name}"
-                            )
-                        node_ip_address = iface["address"]
-
-            if node_ip_address is None:
-                raise Exception(f"Could not find ip for node {node_name}")
-
-            print(f"adding {node_name}")
-            dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][
-                node_name
-            ] = {
-                "ansible_user": "root",
-                "ansible_host": node_ip_address,
-            }
-
-        print(f"writing dyn inv to {inv_path}")
-        validate_cloud_dyn_inv(dynamic_inventory)
-        with open(inv_path, "w") as file:
-            yaml.dump(dynamic_inventory, file)
-
-
-def connect_cluster(args):
-    dynamic_inventory = init_dyn_inv()
-
-    # connect to the cluster via paramiko and check if cloud files are already there
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    ssh.connect(args.pve_host, username="root")
-
-    # since we need root we cant use sftp and root via ssh is disabled
-    _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
-    cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+    cluster_vars = init_funcs.cluster_vars()
 
     if not cluster_vars:
         # cluster has not been yet initialized
@@ -151,19 +41,7 @@ def connect_cluster(args):
     if pve_cloud_domain not in dynamic_inventory:
         dynamic_inventory[pve_cloud_domain] = {}
 
-    # connect to the passed host
-    proxmox = ProxmoxAPI(args.pve_host, user="root", backend="ssh_paramiko")
-
-    # try get the cluster name
-    cluster_name = None
-    status_resp = proxmox.cluster.status.get()
-    for entry in status_resp:
-        if entry["id"] == "cluster":
-            cluster_name = entry["name"]
-            break
-
-    if cluster_name is None:
-        raise Exception("Could not get cluster name")
+    cluster_name = init_funcs.cluster_name()
 
     if cluster_name in dynamic_inventory[pve_cloud_domain] and not args.force:
         print(
@@ -171,11 +49,14 @@ def connect_cluster(args):
         )
         return
 
-    # overwrite on force / create fresh
-    dynamic_inventory[pve_cloud_domain][cluster_name] = {"pve_hosts": {}}
+    dynamic_inventory[pve_cloud_domain][cluster_name] = {
+        "pve_hosts": {}
+    }
 
-    # not present => add and safe the dynamic inventory
-    cluster_hosts = proxmox.nodes.get()
+    if hasattr(args, "jump_hosts") and args.jump_hosts:
+        dynamic_inventory[pve_cloud_domain][cluster_name]["jump_hosts"] = args.jump_hosts.split(",")
+
+    cluster_hosts = init_funcs.get_nodes()
 
     for node in cluster_hosts:
         node_name = node["node"]
@@ -185,27 +66,32 @@ def connect_cluster(args):
             continue
 
         # get the main ip
-        ifaces = proxmox.nodes(node_name).network.get()
+        ifaces = init_funcs.get_node_network(node_name)
+        print("ifaces", ifaces)
         node_ip_address = None
         for iface in ifaces:
             # when specified only take the host ip from the special iface
             if args.host_iface:
                 if iface["iface"] == args.host_iface:
-                    node_ip_address = iface.get("address")
+                    node_ip_address = iface["address"]
                     break
             else:
-                if "gateway" in iface:  # otherwise fallback to iface with default gw
+                if (
+                    "gateway" in iface
+                ):  # otherwise fallback to iface with default gw
                     if node_ip_address is not None:
                         raise Exception(
                             f"found multiple ifaces with gateways for node {node_name}"
                         )
-                    node_ip_address = iface.get("address")
+                    node_ip_address = iface["address"]
 
         if node_ip_address is None:
             raise Exception(f"Could not find ip for node {node_name}")
 
         print(f"adding {node_name}")
-        dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][node_name] = {
+        dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][
+            node_name
+        ] = {
             "ansible_user": "root",
             "ansible_host": node_ip_address,
         }
@@ -216,6 +102,60 @@ def connect_cluster(args):
         yaml.dump(dynamic_inventory, file)
 
 
+
+# todo: rpyc is probably overkill here and could instead use remove pvesh get command
+# either remove in the future or other good usecases are found. terraform prov forwarding?
+def connect_remote_cluster(args):
+    # during setup we assume all jump hosts are online
+    jump_host = args.jump_hosts.split(",")[0]
+
+    with launch_pxrpc(
+        jump_host, args.pve_host, init_venv=True, local_pypi_ip=args.local_pypi_ip
+    ) as (pxrpc, pve_host):
+
+        def read_cluster_vars():
+            result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
+            return yaml.safe_load(result.stdout.strip())
+        
+        init_funcs = SimpleNamespace(
+            cluster_vars=read_cluster_vars,
+            cluster_name=pxrpc.get_pve_cluster_name,
+            get_nodes=pxrpc.get_nodes,
+            get_node_network=pxrpc.get_node_network
+        )
+
+        init_dyn_inv(args, init_funcs)
+
+
+def connect_cluster(args):
+    proxmox = ProxmoxAPI(args.pve_host, user="root", backend="ssh_paramiko")
+
+    def read_cluster_vars():
+        return get_cluster_vars(args.pve_host)
+
+    def get_cluster_name():
+        cluster_name = None
+        status_resp = proxmox.cluster.status.get()
+        for entry in status_resp:
+            if entry["id"] == "cluster":
+                cluster_name = entry["name"]
+                break
+        
+        return cluster_name
+    
+    def get_node_network(node_name):
+        return proxmox.nodes(node_name).network.get()
+
+    init_funcs = SimpleNamespace(
+        cluster_vars=read_cluster_vars,
+        cluster_name=get_cluster_name,
+        get_nodes=proxmox.nodes.get,
+        get_node_network=get_node_network
+    )
+    
+    init_dyn_inv(args, init_funcs)
+
+
 def print_kubeconfig(args):
     if not os.path.exists(args.inventory):
         print("The specified inventory file does not exist!")
@@ -224,84 +164,37 @@ def print_kubeconfig(args):
     with open(args.inventory, "r") as f:
         inventory = yaml.safe_load(f)
 
-    target_pve = inventory["target_pve"]
-
-    target_cloud_domain = get_cloud_domain(target_pve)
+    target_cloud_domain = get_cloud_domain( inventory["target_pve"])
     pve_inventory = get_pve_inventory(target_cloud_domain)
 
-    # find target cluster in loaded inventory
-    target_cluster = None
+    target_cluster = get_target_cluster(pve_inventory, inventory["target_pve"], target_cloud_domain=target_cloud_domain)
+  
+    pve_host, jump_host = get_online_pve_host(pve_inventory, target_cluster)
 
-    for cluster in pve_inventory:
-        if target_pve.endswith((cluster + "." + target_cloud_domain)):
-            target_cluster = cluster
-            break
-
-    if not target_cluster:
-        print("could not find target cluster in pve inventory!")
-        return
-
-    first_host = list(pve_inventory[target_cluster]["pve_hosts"].keys())[0]
-
-    online_jump_host = None
-    if "jump_hosts" in pve_inventory[target_cluster]:
-        # jump hosts for cluster configured => find an online one
-        for jump_host in pve_inventory[target_cluster]["jump_hosts"]:
-            if check_ssh_open(jump_host):
-                online_jump_host = jump_host
-                break
-
-        if not online_jump_host:
-            print("No jump host of target cluster is online / reachable!")
-            return
-
-    if (
+    if jump_host and (
         not "extra_control_plane_sans" in inventory
         or not inventory["extra_control_plane_sans"]
     ):
-        print("kubernetes cluster is not publicly reachable!")
+        print("kubernetes cluster is not publicly reachable! This needs to be the case if jump hosts were specified for the proxmox cluster.")
         return
 
-    jumpbox_channel = None
-    if online_jump_host:
-        jumpbox = paramiko.SSHClient()
-        jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        jumpbox.connect(online_jump_host, username="root")
-
-        jumpbox_transport = jumpbox.get_transport()
-        src_addr = ("127.0.0.1", 0)
-        dest_addr = (pve_inventory[target_cluster][first_host]["ansible_host"], 22)
-
-        jumpbox_channel = jumpbox_transport.open_channel(
-            "direct-tcpip", dest_addr, src_addr
-        )
-
-    # connect to the first pve host in the dyn inv, assumes they are all online
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(
-        pve_inventory[target_cluster][first_host]["ansible_host"],
-        username="root",
-        sock=jumpbox_channel,
-    )
-
-    # since we need root we cant use sftp and root via ssh is disabled
-    _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
-
-    cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
-
-    if online_jump_host:
+    if jump_host:
         print(
             get_ssh_remote_master_kubeconfig(
-                cluster_vars,
                 inventory["stack_name"],
                 inventory["extra_control_plane_sans"][0],
-                online_jump_host,
-                pve_inventory[target_cluster][first_host]["ansible_host"],
+                jump_host,
+                pve_host,
             )
         )
     else:
-        print(get_ssh_master_kubeconfig(cluster_vars, inventory["stack_name"]))
+        # direct connect
+        with connect_host(pve_host, jump_host) as pve_ssh:
+            _, stdout, _ = pve_ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
+
+            cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+
+            print(get_ssh_master_kubeconfig(cluster_vars, inventory["stack_name"]))
 
 
 def get_parser():

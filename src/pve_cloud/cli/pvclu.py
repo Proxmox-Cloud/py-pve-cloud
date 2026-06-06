@@ -10,77 +10,29 @@ from fabric import Connection
 
 from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import *
-
-
-def get_cluster_vars(pve_host, jump_host=None):
-
-    jumpbox_channel = None
-    if jump_host:
-        jumpbox = paramiko.SSHClient()
-        jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        jumpbox.connect(jump_host, username="root")
-
-        jumpbox_transport = jumpbox.get_transport()
-        src_addr = ("127.0.0.1", 0)
-        dest_addr = (pve_host, 22)
-
-        jumpbox_channel = jumpbox_transport.open_channel(
-            "direct-tcpip", dest_addr, src_addr
-        )
-
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    ssh.connect(pve_host, username="root", sock=jumpbox_channel)
-
-    # since we need root we cant use sftp and root via ssh is disabled
-    _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
-
-    cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
-
-    return cluster_vars
-
-
-def get_cloud_env(pve_host):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    ssh.connect(pve_host, username="root")
-
-    # since we need root we cant use sftp and root via ssh is disabled
-    _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
-
-    cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
-
-    _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/secrets/patroni.pass")
-
-    patroni_pass = stdout.read().decode("utf-8").strip()
-
-    # fetch bind update key for ingress dns validation
-    _, stdout, _ = ssh.exec_command("sudo cat /etc/pve/cloud/secrets/internal.key")
-    bind_key_file = stdout.read().decode("utf-8")
-
-    bind_internal_key = re.search(r'secret\s+"([^"]+)";', bind_key_file).group(1)
-
-    return cluster_vars, patroni_pass, bind_internal_key
+from pve_cloud.lib.ssh import connect_host
 
 
 def get_online_pve_host_prsr(args):
-    pve_host, jump_host = get_online_pve_host(args.target_pve, suppress_warnings=True)
+    pve_host, jump_host = get_online_pve_host(args.target_pve)
     if jump_host:
         raise NotImplemented(
-            "Jump host functionality not implemented for get-online-host yet!"
+            f"Online pve host {pve_host} is not reachable directly! Only via {jump_host}"
         )
     print(f"export PVE_ANSIBLE_HOST='{pve_host}'")
 
 
 # works only for cluster with an external exposed control plane
 def get_ssh_remote_master_kubeconfig(
-    cluster_vars, stack_name, external_san, jump_host, pve_host
+    stack_name, external_san, jump_host, pve_host
 ):
     # launch remote pxrpc service
-    with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host):
-        ddns_ips = pxrpc.root.resolve_k8s_master(
+    with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host_conn):
+
+        result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
+        cluster_vars = yaml.safe_load(result.stdout.strip())
+    
+        ddns_ips = pxrpc.resolve_k8s_master(
             [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]],
             f"masters-{stack_name}.{cluster_vars['pve_cloud_domain']}",
         )
@@ -90,7 +42,7 @@ def get_ssh_remote_master_kubeconfig(
 
         # use tunneled pve host to open connection to master node
         with Connection(
-            host=ddns_ips[0], user="admin", gateway=pve_host
+            host=ddns_ips[0], user="admin", gateway=pve_host_conn
         ) as master_node:
             result = master_node.run("sudo cat /etc/kubernetes/admin.conf")
             admin_conf = yaml.safe_load(result.stdout.strip())
@@ -145,55 +97,34 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 
 
 def export_pg_conn_str(args):
-    if args.target_pve:
-        cloud_domain = get_cloud_domain(args.target_pve, suppress_warnings=True)
-    elif args.cloud_domain:
-        cloud_domain = args.cloud_domain
-    else:
+    if not args.target_pve and not args.cloud_domain:
         raise RuntimeError("Neither --target-pve nor --cloud-domain was specified.")
 
-    pve_inventory = get_pve_inventory(cloud_domain, suppress_warnings=True)
+    if args.cloud_domain:
+        cloud_domain = args.cloud_domain
+    else:
+        cloud_domain = get_cloud_domain(args.target_pve)
 
-    # get ansible ip for first host in target cluster
-    ansible_host = None
-    jump_hosts = None
-    for cluster in pve_inventory:
-        if args.cloud_domain:
-            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))[
-                "ansible_host"
-            ]
-            if "jump_hosts" in pve_inventory[cluster]:
-                jump_hosts = pve_inventory[cluster]["jump_hosts"]
+    pve_inventory = get_pve_inventory(cloud_domain)
 
-            break
-        elif args.target_pve.startswith(cluster):
-            ansible_host = next(iter(pve_inventory[cluster]["pve_hosts"].values()))[
-                "ansible_host"
-            ]
-            if "jump_hosts" in pve_inventory[cluster]:
-                jump_hosts = pve_inventory[cluster]["jump_hosts"]
-            break
+    if not args.target_pve:
+        target_cluster = list(pve_inventory.keys())[0] # take random cluster
+    else:
+        # find specific target cluster based on target_pve arg
+        target_cluster = get_target_cluster(pve_inventory, args.target_pve, target_cloud_domain=cloud_domain)
+  
+    pve_host, jump_host = get_online_pve_host(pve_inventory, target_cluster)
 
-    if not ansible_host:
-        raise RuntimeError(f"Could not find online host for {args.target_pve}!")
+    with connect_host(pve_host, jump_host=jump_host) as ssh:
+        _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
+        cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
 
-    cluster_vars, patroni_pass, bind_internal_key = get_cloud_env(ansible_host)
+        _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/secrets/patroni.pass")
+        patroni_pass = stdout.read().decode("utf-8").strip()
 
-    if jump_hosts:
-        # for jump hosts we do local tunneling via a unix socket
-        # first we check if jump host is defined
-        online_jump_host = None
 
-        # jump hosts for cluster configured => find an online one
-        for jump_host in jump_hosts:
-            if check_ssh_open(jump_host):
-                online_jump_host = jump_host
-                break
-
-        if not online_jump_host:
-            raise RuntimeError(
-                f"Jump hosts for cluster defined but none online / reachable!"
-            )
+    if jump_host:
+        # if a jumphost is defined, additionally to returning the pg connstr we create a local unix socket file forward
 
         # pkill existing forwards and cleanup socket
         print(
@@ -201,7 +132,7 @@ def export_pg_conn_str(args):
         )
         # create forward socket
         print(
-            f"ssh -f -N -L {os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000 root@{online_jump_host}"
+            f"ssh -f -N -L {os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000 root@{jump_host}"
         )
         print(
             f"export PG_CONN_STR=\"postgres://postgres:{patroni_pass}@/tf_states?host={urllib.parse.quote(os.getcwd(), safe='')}&sslmode=disable\""

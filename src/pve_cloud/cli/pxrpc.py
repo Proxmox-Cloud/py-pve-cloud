@@ -22,7 +22,7 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 
 
 # initialized / launched by pvcli connect_remote_cluster
-class PxRpcService(rpyc.Service):
+class PxrpcService(rpyc.Service):
 
     def __init__(self):
         super().__init__()
@@ -180,11 +180,10 @@ def main():
 
     # launch it threaded for sync (easy tasks no paralellism)
     if sys.argv[2] == "THREADED":
-        t = ThreadedServer(PxRpcService, port=int(sys.argv[1]))
+        t = ThreadedServer(PxrpcService, port=int(sys.argv[1]))
         t.start()
-
     elif sys.argv[2] == "FORKING":  # forking launch for paralellism
-        f = ForkingServer(PxRpcService, port=int(sys.argv[1]))
+        f = ForkingServer(PxrpcService, port=int(sys.argv[1]))
         f.start()
     else:
         raise RuntimeError("Unknown / missing 2 string arg THREADED/FORKING")
@@ -262,6 +261,16 @@ def _launch_pxrpc_base(
                 yield local_open_port, pve_host_conn  # handle conn from here different based on sync / async
 
 
+# skip the .root for method invocation
+class RPyCConnectionWrapper:
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __getattr__(self, method_name):
+        return getattr(self._connection.root, method_name)
+
+        
 # client launch contextmanagers:
 @contextmanager
 def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
@@ -273,21 +282,20 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
         local_pypi_ip=local_pypi_ip,
     ) as (local_open_port, pve_host_conn):
         # launch rpyc client to the forwarded port
-        pxrpc = rpyc.connect("localhost", local_open_port)
+        pxrpc = RPyCConnectionWrapper(rpyc.connect("localhost", local_open_port))
 
-        yield pxrpc, pve_host_conn  # return to do whatever the caller need
-
-        # shut it down
-        print("invoking remote shutdown function")
-        pxrpc.root.shutdown()
+        try:
+            yield pxrpc, pve_host_conn  # return to do whatever the caller need
+        finally:
+            # shut it down
+            print("invoking remote shutdown function")
+            pxrpc.shutdown()
 
 
 # async implementation with process pool executor underneath (asyncssh struggels with deeper tunneling)
 
-
 # init rpyc connection once per worker in processpoolexecutor initializer
 worker_rpyc_client = None
-
 
 def exit_worker(exit_id):
     global worker_rpyc_client
@@ -323,6 +331,7 @@ class AsyncRPyCPoolWrapper:
         self.pool = pool
         self.loop = asyncio.get_running_loop()
 
+    # lookup wrapper.funcXYZ triggers this and also calls the result by () automatically
     def __getattr__(self, method_name):
 
         def dispatcher(*args, **kwargs):
@@ -344,18 +353,20 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
         jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip
     ) as (local_open_port, pve_host_conn):
 
+        NUM_WORKERS=4
         with ProcessPoolExecutor(
-            max_workers=4, initializer=init_rpyc_worker, initargs=(local_open_port,)
+            max_workers=NUM_WORKERS, initializer=init_rpyc_worker, initargs=(local_open_port,)
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
+            
+            try:
+                yield pxrpc, pve_host_conn  # return to do whatever the caller need
+            finally:
+                print("invoking delayed remote shutdown function")
+                await pxrpc.shutdown()
 
-            yield pxrpc, pve_host_conn  # return to do whatever the caller need
-
-            print("invoking delayed remote shutdown function")
-            await pxrpc.shutdown()
-
-            # close all connection of the workers
-            print("sending pool shutdown")
-            list(
-                pool.map(exit_worker, range(4))
-            )  # list/() is critical to yield the generator
+                # close all connection of the workers
+                print("sending pool shutdown")
+                list(
+                    pool.map(exit_worker, range(NUM_WORKERS))
+                )  # list/() is critical to yield the generator
