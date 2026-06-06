@@ -1,6 +1,5 @@
 import argparse
 import os
-import re
 import urllib.parse
 
 import dns.resolver
@@ -23,15 +22,13 @@ def get_online_pve_host_prsr(args):
 
 
 # works only for cluster with an external exposed control plane
-def get_ssh_remote_master_kubeconfig(
-    stack_name, external_san, jump_host, pve_host
-):
+def get_ssh_remote_master_kubeconfig(stack_name, external_san, jump_host, pve_host):
     # launch remote pxrpc service
     with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host_conn):
 
         result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
         cluster_vars = yaml.safe_load(result.stdout.strip())
-    
+
         ddns_ips = pxrpc.resolve_k8s_master(
             [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]],
             f"masters-{stack_name}.{cluster_vars['pve_cloud_domain']}",
@@ -108,11 +105,13 @@ def export_pg_conn_str(args):
     pve_inventory = get_pve_inventory(cloud_domain)
 
     if not args.target_pve:
-        target_cluster = list(pve_inventory.keys())[0] # take random cluster
+        target_cluster = list(pve_inventory.keys())[0]  # take random cluster
     else:
         # find specific target cluster based on target_pve arg
-        target_cluster = get_target_cluster(pve_inventory, args.target_pve, target_cloud_domain=cloud_domain)
-  
+        target_cluster = get_target_cluster(
+            pve_inventory, args.target_pve, target_cloud_domain=cloud_domain
+        )
+
     pve_host, jump_host = get_online_pve_host(pve_inventory, target_cluster)
 
     with connect_host(pve_host, jump_host=jump_host) as ssh:
@@ -121,7 +120,6 @@ def export_pg_conn_str(args):
 
         _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/secrets/patroni.pass")
         patroni_pass = stdout.read().decode("utf-8").strip()
-
 
     if jump_host:
         # if a jumphost is defined, additionally to returning the pg connstr we create a local unix socket file forward

@@ -270,7 +270,7 @@ class RPyCConnectionWrapper:
     def __getattr__(self, method_name):
         return getattr(self._connection.root, method_name)
 
-        
+
 # client launch contextmanagers:
 @contextmanager
 def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
@@ -296,6 +296,7 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
 
 # init rpyc connection once per worker in processpoolexecutor initializer
 worker_rpyc_client = None
+
 
 def exit_worker(exit_id):
     global worker_rpyc_client
@@ -353,12 +354,14 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
         jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip
     ) as (local_open_port, pve_host_conn):
 
-        NUM_WORKERS=4
+        NUM_WORKERS = 4
         with ProcessPoolExecutor(
-            max_workers=NUM_WORKERS, initializer=init_rpyc_worker, initargs=(local_open_port,)
+            max_workers=NUM_WORKERS,
+            initializer=init_rpyc_worker,
+            initargs=(local_open_port,),
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
-            
+
             try:
                 yield pxrpc, pve_host_conn  # return to do whatever the caller need
             finally:

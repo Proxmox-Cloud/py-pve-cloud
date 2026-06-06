@@ -1,17 +1,15 @@
 import os
 import shutil
-import socket
 import subprocess
+from types import SimpleNamespace
 
 import paramiko
 import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
-from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
-
 from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun
-from types import SimpleNamespace
+from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
 
 
 def get_avahi_iterator():
@@ -45,9 +43,14 @@ def get_avahi_iterator():
                 raise ValueError(
                     f"Missconfigured proxmox cloud avahi service: {service}"
                 )
-            
-            yield SimpleNamespace(host_name=host_name, host_ip=host_ip, cloud_domain=cloud_domain, cluster_name=cluster_name)
-                
+
+            yield SimpleNamespace(
+                host_name=host_name,
+                host_ip=host_ip,
+                cloud_domain=cloud_domain,
+                cluster_name=cluster_name,
+            )
+
 
 def get_cloud_domain(target_pve):
     inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
@@ -90,7 +93,6 @@ def get_pve_inventory(
             # return the cloud domains inventory from here if we found it
             return dynamic_inventory[pve_cloud_domain]
 
-
     if shutil.which("avahi-browse"):
         pve_inventory = {}
 
@@ -103,9 +105,7 @@ def get_pve_inventory(
             # build inventory only for the current domain
             if service.cloud_domain == pve_cloud_domain:
                 if service.cluster_name not in pve_inventory:
-                    pve_inventory[service.cluster_name] = {
-                        "pve_hosts": {}
-                    }
+                    pve_inventory[service.cluster_name] = {"pve_hosts": {}}
 
                 pve_inventory[service.cluster_name]["pve_hosts"][service.host_name] = {
                     "ansible_user": "root",
@@ -186,8 +186,10 @@ def get_pve_inventory(
 
         return pve_inventory
 
-    raise RuntimeError("Local pve inventory file missing (~/.pve-cloud-dyn-inv.yaml), execute `pvcli connect-cluster` or setup avahi mdns discovery!")
-  
+    raise RuntimeError(
+        "Local pve inventory file missing (~/.pve-cloud-dyn-inv.yaml), execute `pvcli connect-cluster` or setup avahi mdns discovery!"
+    )
+
 
 # find target cluster in loaded inventory
 def get_target_cluster(pve_inventory, target_pve, target_cloud_domain=None):
@@ -202,11 +204,12 @@ def get_target_cluster(pve_inventory, target_pve, target_cloud_domain=None):
             break
 
     if not target_cluster:
-        raise RecursionError(f"could not find target cluster for target pve {target_pve} in pve inventory!")
-
+        raise RecursionError(
+            f"could not find target cluster for target pve {target_pve} in pve inventory!"
+        )
 
     return target_cluster
-    
+
 
 def get_online_jump_host(pve_inventory, target_cluster):
     online_jump_host = None
@@ -218,14 +221,16 @@ def get_online_jump_host(pve_inventory, target_cluster):
                 break
 
         if not online_jump_host:
-            raise RuntimeError(f"No jump host of target cluster {target_cluster} is online / reachable!")
-  
+            raise RuntimeError(
+                f"No jump host of target cluster {target_cluster} is online / reachable!"
+            )
+
     return online_jump_host
 
 
 def get_online_pve_host(pve_inventory, target_cluster):
     online_jump_host = get_online_jump_host(pve_inventory, target_cluster)
-  
+
     online_pve_host = None
 
     jumpbox = None
@@ -235,12 +240,17 @@ def get_online_pve_host(pve_inventory, target_cluster):
         jumpbox.connect(online_jump_host, username="root")
 
     for pve_host in pve_inventory[target_cluster]["pve_hosts"]:
-        pve_host_ip = pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"]
+        pve_host_ip = pve_inventory[target_cluster]["pve_hosts"][pve_host][
+            "ansible_host"
+        ]
 
         if jumpbox:
             jumpbox_transport = jumpbox.get_transport()
             src_addr = ("127.0.0.1", 0)
-            dest_addr = (pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"], 22)
+            dest_addr = (
+                pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"],
+                22,
+            )
             jumpbox_channel = jumpbox_transport.open_channel(
                 "direct-tcpip", dest_addr, src_addr
             )
@@ -254,7 +264,6 @@ def get_online_pve_host(pve_inventory, target_cluster):
                 online_pve_host = pve_host_ip
                 break
 
-    
     if not online_pve_host:
         raise RuntimeError("Could not find online pve host for {target_cluster}")
 

@@ -1,17 +1,19 @@
 import argparse
 import os
+from types import SimpleNamespace
+
 import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
-                                 get_ssh_remote_master_kubeconfig,)
+                                 get_ssh_remote_master_kubeconfig)
 from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import *
 from pve_cloud.lib.ssh import connect_host, get_cluster_vars
-from types import SimpleNamespace
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+
 
 # init_funcs needs
 def init_dyn_inv(args, init_funcs):
@@ -49,12 +51,12 @@ def init_dyn_inv(args, init_funcs):
         )
         return
 
-    dynamic_inventory[pve_cloud_domain][cluster_name] = {
-        "pve_hosts": {}
-    }
+    dynamic_inventory[pve_cloud_domain][cluster_name] = {"pve_hosts": {}}
 
     if hasattr(args, "jump_hosts") and args.jump_hosts:
-        dynamic_inventory[pve_cloud_domain][cluster_name]["jump_hosts"] = args.jump_hosts.split(",")
+        dynamic_inventory[pve_cloud_domain][cluster_name]["jump_hosts"] = (
+            args.jump_hosts.split(",")
+        )
 
     cluster_hosts = init_funcs.get_nodes()
 
@@ -76,9 +78,7 @@ def init_dyn_inv(args, init_funcs):
                     node_ip_address = iface["address"]
                     break
             else:
-                if (
-                    "gateway" in iface
-                ):  # otherwise fallback to iface with default gw
+                if "gateway" in iface:  # otherwise fallback to iface with default gw
                     if node_ip_address is not None:
                         raise Exception(
                             f"found multiple ifaces with gateways for node {node_name}"
@@ -89,9 +89,7 @@ def init_dyn_inv(args, init_funcs):
             raise Exception(f"Could not find ip for node {node_name}")
 
         print(f"adding {node_name}")
-        dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][
-            node_name
-        ] = {
+        dynamic_inventory[pve_cloud_domain][cluster_name]["pve_hosts"][node_name] = {
             "ansible_user": "root",
             "ansible_host": node_ip_address,
         }
@@ -100,7 +98,6 @@ def init_dyn_inv(args, init_funcs):
     validate_cloud_dyn_inv(dynamic_inventory)
     with open(inv_path, "w") as file:
         yaml.dump(dynamic_inventory, file)
-
 
 
 # todo: rpyc is probably overkill here and could instead use remove pvesh get command
@@ -116,12 +113,12 @@ def connect_remote_cluster(args):
         def read_cluster_vars():
             result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
             return yaml.safe_load(result.stdout.strip())
-        
+
         init_funcs = SimpleNamespace(
             cluster_vars=read_cluster_vars,
             cluster_name=pxrpc.get_pve_cluster_name,
             get_nodes=pxrpc.get_nodes,
-            get_node_network=pxrpc.get_node_network
+            get_node_network=pxrpc.get_node_network,
         )
 
         init_dyn_inv(args, init_funcs)
@@ -140,9 +137,9 @@ def connect_cluster(args):
             if entry["id"] == "cluster":
                 cluster_name = entry["name"]
                 break
-        
+
         return cluster_name
-    
+
     def get_node_network(node_name):
         return proxmox.nodes(node_name).network.get()
 
@@ -150,9 +147,9 @@ def connect_cluster(args):
         cluster_vars=read_cluster_vars,
         cluster_name=get_cluster_name,
         get_nodes=proxmox.nodes.get,
-        get_node_network=get_node_network
+        get_node_network=get_node_network,
     )
-    
+
     init_dyn_inv(args, init_funcs)
 
 
@@ -164,18 +161,22 @@ def print_kubeconfig(args):
     with open(args.inventory, "r") as f:
         inventory = yaml.safe_load(f)
 
-    target_cloud_domain = get_cloud_domain( inventory["target_pve"])
+    target_cloud_domain = get_cloud_domain(inventory["target_pve"])
     pve_inventory = get_pve_inventory(target_cloud_domain)
 
-    target_cluster = get_target_cluster(pve_inventory, inventory["target_pve"], target_cloud_domain=target_cloud_domain)
-  
+    target_cluster = get_target_cluster(
+        pve_inventory, inventory["target_pve"], target_cloud_domain=target_cloud_domain
+    )
+
     pve_host, jump_host = get_online_pve_host(pve_inventory, target_cluster)
 
     if jump_host and (
         not "extra_control_plane_sans" in inventory
         or not inventory["extra_control_plane_sans"]
     ):
-        print("kubernetes cluster is not publicly reachable! This needs to be the case if jump hosts were specified for the proxmox cluster.")
+        print(
+            "kubernetes cluster is not publicly reachable! This needs to be the case if jump hosts were specified for the proxmox cluster."
+        )
         return
 
     if jump_host:

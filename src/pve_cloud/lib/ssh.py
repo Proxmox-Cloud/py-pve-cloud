@@ -1,15 +1,19 @@
-import paramiko
-from contextlib import contextmanager, asynccontextmanager
-import socket
-import yaml
-import asyncssh
 import asyncio
+import socket
+from contextlib import asynccontextmanager, contextmanager
+
+import asyncssh
+import paramiko
+import yaml
 from asyncssh.misc import ChannelOpenError
+
 
 # generic connect to proxmox cluster through optional jump host
 # assumes pve host and jump host to be ssh root accessible
 @contextmanager
-def connect_host(host : str, jump_host : str = None, user : str = "root", jump_user:str ="root"):
+def connect_host(
+    host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
+):
     jumpbox_channel = None
     jumpbox = None
     if jump_host:
@@ -50,7 +54,7 @@ def get_cluster_vars(pve_host, jump_host=None):
         return cluster_vars
 
 
-def check_ssh_open_tun(tun : paramiko.Channel):
+def check_ssh_open_tun(tun: paramiko.Channel):
     try:
         tun.settimeout(3)
 
@@ -66,14 +70,14 @@ def check_ssh_open_tun(tun : paramiko.Channel):
         return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
-    
 
-def check_ssh_open(check_host : str, jump_host : str = None):
+
+def check_ssh_open(check_host: str, jump_host: str = None):
     if jump_host:
         jumpbox = paramiko.SSHClient()
         jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         jumpbox.connect(jump_host, username="root")
-        jumpbox_channel= None
+        jumpbox_channel = None
 
         try:
             jumpbox_transport = jumpbox.get_transport()
@@ -85,11 +89,11 @@ def check_ssh_open(check_host : str, jump_host : str = None):
             )
 
             return check_ssh_open_tun(jumpbox_channel)
-        
+
         finally:
             if jumpbox_channel is not None:
                 jumpbox_channel.close()
-                
+
             jumpbox.close()
     else:
         try:
@@ -105,16 +109,17 @@ def check_ssh_open(check_host : str, jump_host : str = None):
                 return True
         except (socket.timeout, ConnectionRefusedError, OSError):
             return False
-    
 
 
-async def check_ssh_open_async(check_host : str, jump_host : str = None):
+async def check_ssh_open_async(check_host: str, jump_host: str = None):
     jump_host_conn = None
     if jump_host:
-        jump_host_conn = await asyncssh.connect(jump_host, username="root", known_hosts=None)
+        jump_host_conn = await asyncssh.connect(
+            jump_host, username="root", known_hosts=None
+        )
 
     try:
-        if jump_host_conn:  
+        if jump_host_conn:
             reader, writer = await asyncio.wait_for(
                 jump_host_conn.open_connection(check_host, 22), timeout=2
             )
@@ -145,10 +150,12 @@ async def check_ssh_open_async(check_host : str, jump_host : str = None):
             await jump_host_conn.wait_closed()
 
 
-async def wait_for_ssh_open_async(ip, jump_host : str = None):
+async def wait_for_ssh_open_async(ip, jump_host: str = None):
     jump_host_conn = None
     if jump_host:
-        jump_host_conn = await asyncssh.connect(jump_host, username="root", known_hosts=None)
+        jump_host_conn = await asyncssh.connect(
+            jump_host, username="root", known_hosts=None
+        )
 
     try:
         retries = 0
@@ -192,12 +199,12 @@ async def wait_for_ssh_open_async(ip, jump_host : str = None):
 
 
 @asynccontextmanager
-async def connect_host_async(host : str, jump_host : str = None, user:str = "root", jump_user:str = "root"):
+async def connect_host_async(
+    host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
+):
     jc = None
     if jump_host:
-        jc = await asyncssh.connect(
-            jump_host, username=jump_user, known_hosts=None
-        )
+        jc = await asyncssh.connect(jump_host, username=jump_user, known_hosts=None)
 
     try:
         async with asyncssh.connect(
@@ -208,7 +215,7 @@ async def connect_host_async(host : str, jump_host : str = None, user:str = "roo
             tunnel=jc,
         ) as conn:
             yield conn
-    
+
     finally:
         if jc:
             jc.close()
