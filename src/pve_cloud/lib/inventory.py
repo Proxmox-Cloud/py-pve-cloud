@@ -8,8 +8,21 @@ import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
-from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun
-from pve_cloud.lib.validate import raise_on_py_cloud_missmatch
+from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun, connect_host
+import pve_cloud._version
+
+
+def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
+    # dont raise in tdd
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TDDOG_LOCAL_IFACE"):
+        return
+
+    cluster_vars = get_cluster_vars(proxmox_host, jump_host)
+
+    if cluster_vars["py_pve_cloud_version"] != pve_cloud._version.__version__:
+        raise RuntimeError(
+            f"Version missmatch! py_pve_cloud_version for cluster is {cluster_vars['py_pve_cloud_version']}, while you are using {pve_cloud._version.__version__}"
+        )
 
 
 def get_avahi_iterator():
@@ -268,3 +281,23 @@ def get_online_pve_host(pve_inventory, target_cluster):
         raise RuntimeError("Could not find online pve host for {target_cluster}")
 
     return online_pve_host, online_jump_host
+
+
+def get_online_pve_host_from_target_pve(target_pve, skip_py_cloud_check=False):
+    cloud_domain = get_cloud_domain(target_pve)
+    pve_inventory = get_pve_inventory(cloud_domain, skip_py_cloud_check=skip_py_cloud_check)
+    target_cluster = get_target_cluster(pve_inventory, target_pve, target_cloud_domain=cloud_domain)
+
+    return get_online_pve_host(pve_inventory, target_cluster)
+
+
+def get_cluster_vars(pve_host, jump_host=None):
+    with connect_host(pve_host, jump_host=jump_host) as ssh:
+        # fetching from pmxcfs needs cat, ftp does not work
+        _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
+
+        cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+
+        return cluster_vars
+    
+

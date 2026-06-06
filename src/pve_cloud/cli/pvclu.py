@@ -26,7 +26,7 @@ def get_ssh_remote_master_kubeconfig(stack_name, external_san, jump_host, pve_ho
     # launch remote pxrpc service
     with launch_pxrpc(jump_host, pve_host) as (pxrpc, pve_host_conn):
 
-        result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
+        result = pve_host_conn.run("cat /etc/pve/cloud/cluster_vars.yaml")
         cluster_vars = yaml.safe_load(result.stdout.strip())
 
         ddns_ips = pxrpc.resolve_k8s_master(

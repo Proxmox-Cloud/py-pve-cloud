@@ -44,14 +44,7 @@ def connect_host(
             jumpbox.close()
 
 
-def get_cluster_vars(pve_host, jump_host=None):
-    with connect_host(pve_host, jump_host=jump_host) as ssh:
-        # fetching from pmxcfs needs cat, ftp does not work
-        _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
 
-        cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
-
-        return cluster_vars
 
 
 def check_ssh_open_tun(tun: paramiko.Channel):
