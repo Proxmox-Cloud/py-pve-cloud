@@ -140,7 +140,7 @@ async def check_ssh_open_async(check_host: str, jump_host: str = None):
             await jump_host_conn.wait_closed()
 
 
-async def wait_for_ssh_open_async(ip, jump_host: str = None):
+async def wait_for_ssh_open_async(host: str, jump_host: str = None):
     jump_host_conn = None
     if jump_host:
         jump_host_conn = await asyncssh.connect(
@@ -157,11 +157,11 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
                 try:
                     if jump_host_conn:
                         reader, writer = await asyncio.wait_for(
-                            jump_host_conn.open_connection(ip, ssh_port), timeout=1
+                            jump_host_conn.open_connection(host, ssh_port), timeout=1
                         )
                     else:
                         reader, writer = await asyncio.wait_for(
-                            asyncio.open_connection(ip, ssh_port), timeout=1
+                            asyncio.open_connection(host, ssh_port), timeout=1
                         )
                     await asyncio.wait_for(reader.readline(), timeout=3)
 
