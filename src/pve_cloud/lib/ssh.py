@@ -26,7 +26,7 @@ def _get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
             _jump_hosts[jump_host]
             .get_transport()
             .open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
-    )
+        )
 
 
 # cleanup hook
@@ -129,6 +129,7 @@ def check_ssh_open(check_host: str, jump_host: str = None):
 _async_jumphosts = {}
 _async_jump_lock = asyncio.Lock()
 
+
 # atexit handler, atexit doesnt handle async functions, this is why
 # we wrap it here
 async def cleanup_jumphosts_async():
@@ -161,7 +162,7 @@ async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
         raise RuntimeError(
             "Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!"
         )
-    
+
     async with _async_jump_lock:
         if jump_host not in _async_jumphosts:
             _async_jumphosts[jump_host] = await asyncssh.connect(

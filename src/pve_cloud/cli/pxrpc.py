@@ -1,5 +1,6 @@
 import asyncio
 import json
+import multiprocessing
 import os
 import socket
 import subprocess
@@ -21,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
-import multiprocessing
 
 
 # initialized / launched by pvcli connect_remote_cluster
@@ -31,7 +31,9 @@ class PxrpcService(rpyc.Service):
     def __init__(self):
         super().__init__()
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
-        self.patroni_cstr = self.get_pg_conn_str() # we need postgres for almost anything
+        self.patroni_cstr = (
+            self.get_pg_conn_str()
+        )  # we need postgres for almost anything
 
     def on_connect(self, conn):
         pass
@@ -339,7 +341,7 @@ def init_rpyc_worker(port):
 def _execute_rpyc_call(method_name, *args, **kwargs):
     global worker_rpyc_client
     print(f"executing rpyc call {method_name} on pid {os.getpid()}")
- 
+
     remote_method = getattr(worker_rpyc_client.root, method_name)
     result = remote_method(*args, **kwargs)
 
@@ -380,7 +382,7 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
             max_workers=NUM_WORKERS,
             initializer=init_rpyc_worker,
             initargs=(local_open_port,),
-            mp_context=multiprocessing.get_context("spawn")
+            mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
 
