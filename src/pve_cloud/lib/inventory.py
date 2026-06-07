@@ -9,7 +9,7 @@ import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
-from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun, connect_host
+from pve_cloud.lib.ssh import check_ssh_open, check_ssh_open_tun, connect_host, get_jump_host_chan
 
 
 def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
@@ -246,31 +246,19 @@ def get_online_pve_host(pve_inventory, target_cluster):
 
     online_pve_host = None
 
-    jumpbox = None
-    if online_jump_host:
-        jumpbox = paramiko.SSHClient()
-        jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        jumpbox.connect(online_jump_host, username="root")
-
     for pve_host in pve_inventory[target_cluster]["pve_hosts"]:
         pve_host_ip = pve_inventory[target_cluster]["pve_hosts"][pve_host][
             "ansible_host"
         ]
 
-        if jumpbox:
-            jumpbox_transport = jumpbox.get_transport()
-            src_addr = ("127.0.0.1", 0)
-            dest_addr = (
-                pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"],
-                22,
-            )
-            jumpbox_channel = jumpbox_transport.open_channel(
-                "direct-tcpip", dest_addr, src_addr
-            )
-
-            if check_ssh_open_tun(jumpbox_channel):
-                online_pve_host = pve_host_ip
-                break
+        if online_jump_host:
+            jumpbox_channel = get_jump_host_chan(pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"], online_jump_host)
+            try:
+                if check_ssh_open_tun(jumpbox_channel):
+                    online_pve_host = pve_host_ip
+                    break
+            finally:
+                jumpbox_channel.close()
         else:
             # direct connect
             if check_ssh_open(pve_host_ip):
