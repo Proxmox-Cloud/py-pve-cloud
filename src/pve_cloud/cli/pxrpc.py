@@ -19,9 +19,12 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
+import subprocess
+import yaml
 
 
 # initialized / launched by pvcli connect_remote_cluster
+# it is launched on a proxmox host
 class PxrpcService(rpyc.Service):
 
     def __init__(self):
@@ -40,9 +43,36 @@ class PxrpcService(rpyc.Service):
         time.sleep(5)  # workers get more time to shut down
         os._exit(0)
 
+
+    def get_pg_conn_str(self):
+        # return from cache if present
+        if self.patroni_cstr:
+            return self.patroni_cstr
+        
+        # needs to be cat because of proxmox fs
+        result_pass = subprocess.run(
+            ["cat", "/etc/pve/cloud/secrets/patroni.pass"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        patroni_pass = result_pass.stdout.rstrip()
+
+        result_vars = subprocess.run(
+            ["cat", "/etc/pve/cloud/cluster_vars.yaml"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        cluster_vars = yaml.safe_load(result_vars.stdout)
+
+        self.patroni_cstr = f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
+
+        return self.patroni_cstr
+
     def exposed_e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
-        return 53
+        return self.get_pg_conn_str()
 
     def exposed_get_pve_cluster_name(self):
         # try get the cluster name
@@ -74,8 +104,8 @@ class PxrpcService(rpyc.Service):
 
         return ddns_ips
 
-    def exposed_e2e_inject_cert(self, pg_conn_str_orm, stack_fqdn, record0):
-        engine = create_engine(pg_conn_str_orm)
+    def exposed_e2e_inject_cert(self, stack_fqdn, record0):
+        engine = create_engine(self.get_pg_conn_str())
 
         # update certs and mirror pull secret
         with Session(engine) as session:
@@ -90,9 +120,9 @@ class PxrpcService(rpyc.Service):
             session.commit()
 
     def exposed_inject_cloud_secret(
-        self, pg_conn_str_orm, cloud_domain, secret_name, secret_data_json, secret_type
+        self, cloud_domain, secret_name, secret_data_json, secret_type
     ):
-        engine = create_engine(pg_conn_str_orm)
+        engine = create_engine(self.get_pg_conn_str())
 
         with Session(engine) as session:
             try:
@@ -111,9 +141,9 @@ class PxrpcService(rpyc.Service):
                 session.rollback()
                 return False
 
-    def exposed_delete_cloud_secret(self, pg_conn_str_orm, cloud_domain, secret_name):
+    def exposed_delete_cloud_secret(self, cloud_domain, secret_name):
 
-        engine = create_engine(pg_conn_str_orm)
+        engine = create_engine(self.get_pg_conn_str())
 
         with Session(engine) as session:
             stmt = delete(ProxmoxCloudSecrets).where(
@@ -124,9 +154,9 @@ class PxrpcService(rpyc.Service):
             result = session.execute(stmt)
             session.commit()
 
-    def exposed_get_cloud_secret(self, pg_conn_str_orm, cloud_domain, secret_name):
+    def exposed_get_cloud_secret(self, cloud_domain, secret_name):
 
-        engine = create_engine(pg_conn_str_orm)
+        engine = create_engine(self.get_pg_conn_str())
 
         with Session(engine) as session:
             stmt = select(ProxmoxCloudSecrets).where(
@@ -141,8 +171,8 @@ class PxrpcService(rpyc.Service):
         secret_data_json = json.dumps(record.secret_data)
         return secret_data_json
 
-    def exposed_get_cloud_secrets(self, pg_conn_str_orm, cloud_domain, secret_type):
-        engine = create_engine(pg_conn_str_orm)
+    def exposed_get_cloud_secrets(self, cloud_domain, secret_type):
+        engine = create_engine(self.get_pg_conn_str())
 
         with Session(engine) as session:
             stmt = select(ProxmoxCloudSecrets).where(
@@ -156,8 +186,8 @@ class PxrpcService(rpyc.Service):
         )
         return secrets_json
 
-    def exposed_get_vm_vars_blake(self, pg_conn_str_orm, blake_ids_json, cloud_domain):
-        engine = create_engine(pg_conn_str_orm)
+    def exposed_get_vm_vars_blake(self, blake_ids_json, cloud_domain):
+        engine = create_engine(self.get_pg_conn_str())
 
         blake_ids = json.loads(blake_ids_json)
 
@@ -352,7 +382,7 @@ class AsyncRPyCPoolWrapper:
 async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
     with _launch_pxrpc_base(
         jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip
-    ) as (local_open_port, pve_host_conn):
+    ) as (local_open_port, _):
 
         NUM_WORKERS = 4
         with ProcessPoolExecutor(
@@ -363,7 +393,7 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
             pxrpc = AsyncRPyCPoolWrapper(pool)
 
             try:
-                yield pxrpc, pve_host_conn  # return to do whatever the caller need
+                yield pxrpc  # return to do whatever the caller need
             finally:
                 print("invoking delayed remote shutdown function")
                 await pxrpc.shutdown()
