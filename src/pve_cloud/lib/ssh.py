@@ -134,7 +134,7 @@ def get_ssh_asyncio_loop():
 
 async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
     # make sure methods get invoked in the proper context for cleanup
-    if not getattr("_pxc_ssh_managed", asyncio.get_running_loop(), False):
+    if not getattr(asyncio.get_running_loop(), "_pxc_ssh_managed", False):
         raise RuntimeError(
             "Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!"
         )

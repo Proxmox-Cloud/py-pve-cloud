@@ -128,7 +128,7 @@ def export_pg_conn_str(args):
 
         # pkill existing forwards and cleanup socket
         print(
-            f"pkill -f '{os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000' && rm {os.getcwd()}/.s.PGSQL.5432 && sleep 2"
+            f"pkill -f '{os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000' && rm -f {os.getcwd()}/.s.PGSQL.5432 && sleep 2"
         )
         # create forward socket
         print(
