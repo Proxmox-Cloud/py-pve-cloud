@@ -1,18 +1,17 @@
 import asyncio
+import atexit
 import socket
 from contextlib import asynccontextmanager, contextmanager
 
 import asyncssh
 import paramiko
-import atexit
 from asyncssh.misc import ChannelOpenError
-from contextlib import contextmanager
-
 
 # jump host connection cache
 _jump_hosts = {}
 
-def get_jump_host_chan(host:str, jump_host: str, jump_user: str = "root"):
+
+def get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
     if jump_host not in _jump_hosts:
         jumpbox = paramiko.SSHClient()
         jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -20,10 +19,10 @@ def get_jump_host_chan(host:str, jump_host: str, jump_user: str = "root"):
 
         _jump_hosts[jump_host] = jumpbox
 
-    return _jump_hosts[jump_host].get_transport().open_channel(
-        "direct-tcpip",
-        (host, 22),
-        ("127.0.0.1", 0)
+    return (
+        _jump_hosts[jump_host]
+        .get_transport()
+        .open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
     )
 
 
@@ -35,13 +34,16 @@ def cleanup_jumphosts():
 
 atexit.register(cleanup_jumphosts)
 
+
 # generic connect to proxmox cluster through optional jump host
 # assumes pve host and jump host to be ssh root accessible
 @contextmanager
 def connect_host(
     host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
 ):
-    jumpbox_channel = get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
+    jumpbox_channel = (
+        get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
+    )
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -103,6 +105,7 @@ def check_ssh_open(check_host: str, jump_host: str = None):
 # to prevent running into ratelimits from firewalls we reuse our jump hosts
 _async_jumphosts = {}
 
+
 # atexit handler, atexit doesnt handle async functions, this is why
 # we wrap it here
 async def cleanup_jumphosts_async():
@@ -132,14 +135,16 @@ def get_ssh_asyncio_loop():
 async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
     # make sure methods get invoked in the proper context for cleanup
     if not getattr("_pxc_ssh_managed", asyncio.get_running_loop(), False):
-        raise RuntimeError("Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!")
-    
+        raise RuntimeError(
+            "Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!"
+        )
+
     if jump_host not in _async_jumphosts:
         print("initting jump host", jump_host)
         _async_jumphosts[jump_host] = await asyncssh.connect(
             jump_host, username=jump_user, known_hosts=None
         )
-    
+
     return _async_jumphosts[jump_host]
 
 
@@ -219,7 +224,11 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
 
 @asynccontextmanager
 async def connect_host_async(
-    host: str, jump_host: str = None, port: int = 22, user: str = "root", jump_user: str = "root"
+    host: str,
+    jump_host: str = None,
+    port: int = 22,
+    user: str = "root",
+    jump_user: str = "root",
 ):
     jc = None
     if jump_host:
@@ -231,9 +240,6 @@ async def connect_host_async(
         known_hosts=None,
         # optionally pass tunnel here => equivalent to ansible ProxyJump
         tunnel=jc,
-        port=port
+        port=port,
     ) as conn:
         yield conn
-
-
-
