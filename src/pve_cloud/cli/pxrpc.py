@@ -1,5 +1,6 @@
 import asyncio
 import json
+import multiprocessing
 import os
 import socket
 import subprocess
@@ -21,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
-import multiprocessing
 
 
 # initialized / launched by pvcli connect_remote_cluster
@@ -39,7 +39,7 @@ class PxrpcService(rpyc.Service):
         cluster_vars = yaml.safe_load(result_vars.stdout)
 
         return cluster_vars
-    
+
     def get_pg_conn_str(self, cluster_vars):
         # needs to be cat because of proxmox fs
         result_pass = subprocess.run(
@@ -51,14 +51,16 @@ class PxrpcService(rpyc.Service):
         patroni_pass = result_pass.stdout.rstrip()
 
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
-    
+
     def __init__(self):
         super().__init__()
 
         # init services required by most functions
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
         self.cluster_vars = self.get_cluster_vars()
-        self.patroni_cstr = self.get_pg_conn_str(self.cluster_vars) # we need postgres for almost anything
+        self.patroni_cstr = self.get_pg_conn_str(
+            self.cluster_vars
+        )  # we need postgres for almost anything
 
     # rpyc doesnt have a clean shutdown methodology
     # this is the cleanest i found without triggerin eof on the clients side
@@ -196,12 +198,13 @@ class PxrpcService(rpyc.Service):
 
         vars_json = json.dumps({entry.blake_id: entry.vm_vars for entry in records})
         return vars_json
-    
+
     def exposed_get_dns_a_record(self, host):
         # get nameservers of the cloud (global in all cluster vars defined)
         resolver = dns.resolver.Resolver()
         resolver.nameservers = [
-            self.cluster_vars["bind_master_ip"], self.cluster_vars["bind_slave_ip"]
+            self.cluster_vars["bind_master_ip"],
+            self.cluster_vars["bind_slave_ip"],
         ]
 
         try:
@@ -209,7 +212,6 @@ class PxrpcService(rpyc.Service):
             return json.dumps([rdata.address for rdata in answers])
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             return "[]"
-
 
 
 # launch the rpc server
@@ -354,7 +356,7 @@ def init_rpyc_worker(port):
 def _execute_rpyc_call(method_name, *args, **kwargs):
     global worker_rpyc_client
     print(f"executing rpyc call {method_name} on pid {os.getpid()}")
- 
+
     remote_method = getattr(worker_rpyc_client.root, method_name)
     result = remote_method(*args, **kwargs)
 
@@ -396,7 +398,7 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
             initializer=init_rpyc_worker,
             initargs=(local_open_port,),
             # without this rpyc clients might fail in some environments
-            mp_context=multiprocessing.get_context("spawn")
+            mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
 
