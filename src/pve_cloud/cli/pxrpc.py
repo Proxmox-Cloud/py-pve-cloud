@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
+import multiprocessing
 
 
 # initialized / launched by pvcli connect_remote_cluster
@@ -30,6 +31,7 @@ class PxrpcService(rpyc.Service):
     def __init__(self):
         super().__init__()
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
+        self.patroni_cstr = self.get_pg_conn_str() # we need postgres for almost anything
 
     def on_connect(self, conn):
         pass
@@ -44,10 +46,6 @@ class PxrpcService(rpyc.Service):
         os._exit(0)
 
     def get_pg_conn_str(self):
-        # return from cache if present
-        if self.patroni_cstr:
-            return self.patroni_cstr
-
         # needs to be cat because of proxmox fs
         result_pass = subprocess.run(
             ["cat", "/etc/pve/cloud/secrets/patroni.pass"],
@@ -65,9 +63,7 @@ class PxrpcService(rpyc.Service):
         )
         cluster_vars = yaml.safe_load(result_vars.stdout)
 
-        self.patroni_cstr = f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
-
-        return self.patroni_cstr
+        return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
 
     def exposed_e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
@@ -222,7 +218,6 @@ def main():
 def _launch_pxrpc_base(
     jump_host, pve_host, rpyc_server_type, init_venv=False, local_pypi_ip=None
 ):
-    print("connecting to", jump_host, pve_host)
     with Connection(host=jump_host, user="root") as jump_host_conn:
         with Connection(
             host=pve_host, user="root", gateway=jump_host_conn
@@ -311,7 +306,7 @@ def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
         local_pypi_ip=local_pypi_ip,
     ) as (local_open_port, pve_host_conn):
         # launch rpyc client to the forwarded port
-        pxrpc = RPyCConnectionWrapper(rpyc.connect("localhost", local_open_port))
+        pxrpc = RPyCConnectionWrapper(rpyc.connect("127.0.0.1", local_open_port))
 
         try:
             yield pxrpc, pve_host_conn  # return to do whatever the caller need
@@ -337,21 +332,18 @@ def exit_worker(exit_id):
 def init_rpyc_worker(port):
     global worker_rpyc_client
 
-    worker_rpyc_client = rpyc.connect("localhost", port)
+    worker_rpyc_client = rpyc.connect("127.0.0.1", port)
 
 
 # generic method call on the rpyc connection
 def _execute_rpyc_call(method_name, *args, **kwargs):
     global worker_rpyc_client
-
     print(f"executing rpyc call {method_name} on pid {os.getpid()}")
-    try:
-        remote_method = getattr(worker_rpyc_client.root, method_name)
-        result = remote_method(*args, **kwargs)
+ 
+    remote_method = getattr(worker_rpyc_client.root, method_name)
+    result = remote_method(*args, **kwargs)
 
-        return result
-    except Exception as e:
-        return f"RPyC Execution Error ({method_name}): {e}"
+    return result
 
 
 # rpyc connection wrapper that passed calls to executor
@@ -388,6 +380,7 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
             max_workers=NUM_WORKERS,
             initializer=init_rpyc_worker,
             initargs=(local_open_port,),
+            mp_context=multiprocessing.get_context("spawn")
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
 

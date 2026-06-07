@@ -10,22 +10,22 @@ from asyncssh.misc import ChannelOpenError
 
 # jump host connection cache
 _jump_hosts = {}
-# _jump_chan_lock = threading.Lock()
+_jump_chan_lock = threading.Lock()
 
 
-def get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
-    # with _jump_chan_lock:
-    if jump_host not in _jump_hosts:
-        jumpbox = paramiko.SSHClient()
-        jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        jumpbox.connect(jump_host, username=jump_user)
+def _get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
+    with _jump_chan_lock:
+        if jump_host not in _jump_hosts:
+            jumpbox = paramiko.SSHClient()
+            jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            jumpbox.connect(jump_host, username=jump_user)
 
-        _jump_hosts[jump_host] = jumpbox
+            _jump_hosts[jump_host] = jumpbox
 
-    return (
-        _jump_hosts[jump_host]
-        .get_transport()
-        .open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
+        return (
+            _jump_hosts[jump_host]
+            .get_transport()
+            .open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
     )
 
 
@@ -62,7 +62,7 @@ def connect_host(
     host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
 ):
     jumpbox_channel = (
-        get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
+        _get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
     )
 
     ssh = paramiko.SSHClient()
@@ -85,7 +85,7 @@ def check_ssh_open(check_host: str, jump_host: str = None):
         return cache_open
 
     if jump_host:
-        jumpbox_channel = get_jump_host_chan(check_host, jump_host)
+        jumpbox_channel = _get_jump_host_chan(check_host, jump_host)
 
         try:
             jumpbox_channel.settimeout(3)
@@ -127,7 +127,7 @@ def check_ssh_open(check_host: str, jump_host: str = None):
 # online checking can get quite excessive with lots of vms/lxcs
 # to prevent running into ratelimits from firewalls we reuse our jump hosts
 _async_jumphosts = {}
-
+_async_jump_lock = asyncio.Lock()
 
 # atexit handler, atexit doesnt handle async functions, this is why
 # we wrap it here
@@ -161,14 +161,14 @@ async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
         raise RuntimeError(
             "Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!"
         )
+    
+    async with _async_jump_lock:
+        if jump_host not in _async_jumphosts:
+            _async_jumphosts[jump_host] = await asyncssh.connect(
+                jump_host, username=jump_user, known_hosts=None
+            )
 
-    if jump_host not in _async_jumphosts:
-        print("initting jump host", jump_host)
-        _async_jumphosts[jump_host] = await asyncssh.connect(
-            jump_host, username=jump_user, known_hosts=None
-        )
-
-    return _async_jumphosts[jump_host]
+        return _async_jumphosts[jump_host]
 
 
 async def check_ssh_open_async(check_host: str, jump_host: str = None):
