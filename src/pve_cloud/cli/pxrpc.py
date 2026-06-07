@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -11,6 +12,7 @@ from contextlib import asynccontextmanager, contextmanager
 import dns.resolver
 import pve_cloud._version as pxc_version
 import rpyc
+import yaml
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from sqlalchemy import create_engine, delete, select
@@ -19,8 +21,6 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
-import subprocess
-import yaml
 
 
 # initialized / launched by pvcli connect_remote_cluster
@@ -43,12 +43,11 @@ class PxrpcService(rpyc.Service):
         time.sleep(5)  # workers get more time to shut down
         os._exit(0)
 
-
     def get_pg_conn_str(self):
         # return from cache if present
         if self.patroni_cstr:
             return self.patroni_cstr
-        
+
         # needs to be cat because of proxmox fs
         result_pass = subprocess.run(
             ["cat", "/etc/pve/cloud/secrets/patroni.pass"],
