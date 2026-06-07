@@ -28,26 +28,19 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 # it is launched on a proxmox host
 class PxrpcService(rpyc.Service):
 
-    def __init__(self):
-        super().__init__()
-        self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
-        self.patroni_cstr = (
-            self.get_pg_conn_str()
-        )  # we need postgres for almost anything
+    # functions for constructor
+    def get_cluster_vars(self):
+        result_vars = subprocess.run(
+            ["cat", "/etc/pve/cloud/cluster_vars.yaml"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        cluster_vars = yaml.safe_load(result_vars.stdout)
 
-    def on_connect(self, conn):
-        pass
+        return cluster_vars
 
-    def on_disconnect(self, conn):
-        pass
-
-    # rpyc doesnt have a clean shutdown methodology
-    # this is the cleanest i found without triggerin eof on the clients side
-    def shutdown(self):
-        time.sleep(5)  # workers get more time to shut down
-        os._exit(0)
-
-    def get_pg_conn_str(self):
+    def get_pg_conn_str(self, cluster_vars):
         # needs to be cat because of proxmox fs
         result_pass = subprocess.run(
             ["cat", "/etc/pve/cloud/secrets/patroni.pass"],
@@ -57,19 +50,27 @@ class PxrpcService(rpyc.Service):
         )
         patroni_pass = result_pass.stdout.rstrip()
 
-        result_vars = subprocess.run(
-            ["cat", "/etc/pve/cloud/cluster_vars.yaml"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        cluster_vars = yaml.safe_load(result_vars.stdout)
-
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
+
+    def __init__(self):
+        super().__init__()
+
+        # init services required by most functions
+        self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
+        self.cluster_vars = self.get_cluster_vars()
+        self.patroni_cstr = self.get_pg_conn_str(
+            self.cluster_vars
+        )  # we need postgres for almost anything
+
+    # rpyc doesnt have a clean shutdown methodology
+    # this is the cleanest i found without triggerin eof on the clients side
+    def shutdown(self):
+        time.sleep(5)  # workers get more time to shut down
+        os._exit(0)
 
     def exposed_e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
-        return self.get_pg_conn_str()
+        return self.patroni_cstr
 
     def exposed_get_pve_cluster_name(self):
         # try get the cluster name
@@ -102,7 +103,7 @@ class PxrpcService(rpyc.Service):
         return ddns_ips
 
     def exposed_e2e_inject_cert(self, stack_fqdn, record0):
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         # update certs and mirror pull secret
         with Session(engine) as session:
@@ -119,7 +120,7 @@ class PxrpcService(rpyc.Service):
     def exposed_inject_cloud_secret(
         self, cloud_domain, secret_name, secret_data_json, secret_type
     ):
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         with Session(engine) as session:
             try:
@@ -140,7 +141,7 @@ class PxrpcService(rpyc.Service):
 
     def exposed_delete_cloud_secret(self, cloud_domain, secret_name):
 
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         with Session(engine) as session:
             stmt = delete(ProxmoxCloudSecrets).where(
@@ -153,7 +154,7 @@ class PxrpcService(rpyc.Service):
 
     def exposed_get_cloud_secret(self, cloud_domain, secret_name):
 
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         with Session(engine) as session:
             stmt = select(ProxmoxCloudSecrets).where(
@@ -169,7 +170,7 @@ class PxrpcService(rpyc.Service):
         return secret_data_json
 
     def exposed_get_cloud_secrets(self, cloud_domain, secret_type):
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         with Session(engine) as session:
             stmt = select(ProxmoxCloudSecrets).where(
@@ -184,7 +185,7 @@ class PxrpcService(rpyc.Service):
         return secrets_json
 
     def exposed_get_vm_vars_blake(self, blake_ids_json, cloud_domain):
-        engine = create_engine(self.get_pg_conn_str())
+        engine = create_engine(self.patroni_cstr)
 
         blake_ids = json.loads(blake_ids_json)
 
@@ -197,6 +198,20 @@ class PxrpcService(rpyc.Service):
 
         vars_json = json.dumps({entry.blake_id: entry.vm_vars for entry in records})
         return vars_json
+
+    def exposed_get_dns_a_record(self, host):
+        # get nameservers of the cloud (global in all cluster vars defined)
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = [
+            self.cluster_vars["bind_master_ip"],
+            self.cluster_vars["bind_slave_ip"],
+        ]
+
+        try:
+            answers = resolver.resolve(host, "A")
+            return json.dumps([rdata.address for rdata in answers])
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+            return "[]"
 
 
 # launch the rpc server
@@ -382,6 +397,7 @@ async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip
             max_workers=NUM_WORKERS,
             initializer=init_rpyc_worker,
             initargs=(local_open_port,),
+            # without this rpyc clients might fail in some environments
             mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
             pxrpc = AsyncRPyCPoolWrapper(pool)
