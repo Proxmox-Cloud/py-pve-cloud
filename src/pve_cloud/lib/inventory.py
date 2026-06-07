@@ -9,8 +9,7 @@ import yaml
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
-from pve_cloud.lib.ssh import (check_ssh_open, check_ssh_open_tun,
-                               connect_host, get_jump_host_chan)
+from pve_cloud.lib.ssh import (check_ssh_open, connect_host)
 
 
 def raise_on_py_cloud_missmatch(proxmox_host, jump_host=None):
@@ -253,16 +252,9 @@ def get_online_pve_host(pve_inventory, target_cluster):
         ]
 
         if online_jump_host:
-            jumpbox_channel = get_jump_host_chan(
-                pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"],
-                online_jump_host,
-            )
-            try:
-                if check_ssh_open_tun(jumpbox_channel):
-                    online_pve_host = pve_host_ip
-                    break
-            finally:
-                jumpbox_channel.close()
+            if check_ssh_open(pve_inventory[target_cluster]["pve_hosts"][pve_host]["ansible_host"], online_jump_host):
+                online_pve_host = pve_host_ip
+                break
         else:
             # direct connect
             if check_ssh_open(pve_host_ip):

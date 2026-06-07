@@ -1,17 +1,21 @@
 import asyncio
-import atexit
 import socket
 from contextlib import asynccontextmanager, contextmanager
 
 import asyncssh
 import paramiko
+import atexit
 from asyncssh.misc import ChannelOpenError
+from contextlib import contextmanager
+import threading
+
 
 # jump host connection cache
 _jump_hosts = {}
+# _jump_chan_lock = threading.Lock()
 
-
-def get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
+def get_jump_host_chan(host:str, jump_host: str, jump_user: str = "root"):
+    #with _jump_chan_lock:
     if jump_host not in _jump_hosts:
         jumpbox = paramiko.SSHClient()
         jumpbox.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -19,10 +23,10 @@ def get_jump_host_chan(host: str, jump_host: str, jump_user: str = "root"):
 
         _jump_hosts[jump_host] = jumpbox
 
-    return (
-        _jump_hosts[jump_host]
-        .get_transport()
-        .open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
+    return _jump_hosts[jump_host].get_transport().open_channel(
+        "direct-tcpip",
+        (host, 22),
+        ("127.0.0.1", 0)
     )
 
 
@@ -34,6 +38,22 @@ def cleanup_jumphosts():
 
 atexit.register(cleanup_jumphosts)
 
+# caches for open checks to avoid rate limits
+_ssh_open_hosts_cache = {}
+_open_cache_lock = threading.Lock()
+
+def get_open_ssh_from_cache(host: str):
+    with _open_cache_lock:
+        if host in _ssh_open_hosts_cache:
+            return _ssh_open_hosts_cache[host]
+        
+    return None
+
+
+def set_open_ssh_cache(host: str, open: bool):
+    with _open_cache_lock:
+        _ssh_open_hosts_cache[host] = open
+
 
 # generic connect to proxmox cluster through optional jump host
 # assumes pve host and jump host to be ssh root accessible
@@ -41,9 +61,7 @@ atexit.register(cleanup_jumphosts)
 def connect_host(
     host: str, jump_host: str = None, user: str = "root", jump_user: str = "root"
 ):
-    jumpbox_channel = (
-        get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
-    )
+    jumpbox_channel = get_jump_host_chan(host, jump_host, jump_user) if jump_host else None
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -59,30 +77,32 @@ def connect_host(
             jumpbox_channel.close()
 
 
-def check_ssh_open_tun(tun: paramiko.Channel):
-    try:
-        tun.settimeout(3)
-
-        # Use makefile() instead of socket.SocketIO to safely create a read/write stream
-        with tun.makefile("rwb") as sio:
-            # read ssh server answer
-            sio.readline()
-
-            # send client hello
-            sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
-            sio.flush()
-
-        return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
-        return False
-
 
 def check_ssh_open(check_host: str, jump_host: str = None):
+    cache_open = get_open_ssh_from_cache(check_host)
+    if cache_open is not None:
+        return cache_open
+
     if jump_host:
         jumpbox_channel = get_jump_host_chan(check_host, jump_host)
 
         try:
-            return check_ssh_open_tun(jumpbox_channel)
+            jumpbox_channel.settimeout(3)
+
+            # Use makefile() instead of socket.SocketIO to safely create a read/write stream
+            with jumpbox_channel.makefile("rwb") as sio:
+                # read ssh server answer
+                sio.readline()
+
+                # send client hello
+                sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
+                sio.flush()
+
+            set_open_ssh_cache(check_host, True)
+            return True
+        except (socket.timeout, ConnectionRefusedError, OSError):
+            set_open_ssh_cache(check_host, False)
+            return False
         finally:
             jumpbox_channel.close()
     else:
@@ -96,15 +116,16 @@ def check_ssh_open(check_host: str, jump_host: str = None):
                     sio.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
                     sio.flush()
 
+                set_open_ssh_cache(check_host, True)
                 return True
         except (socket.timeout, ConnectionRefusedError, OSError):
+            set_open_ssh_cache(check_host, False)
             return False
 
 
 # online checking can get quite excessive with lots of vms/lxcs
 # to prevent running into ratelimits from firewalls we reuse our jump hosts
 _async_jumphosts = {}
-
 
 # atexit handler, atexit doesnt handle async functions, this is why
 # we wrap it here
@@ -135,20 +156,23 @@ def get_ssh_asyncio_loop():
 async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
     # make sure methods get invoked in the proper context for cleanup
     if not getattr(asyncio.get_running_loop(), "_pxc_ssh_managed", False):
-        raise RuntimeError(
-            "Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!"
-        )
-
+        raise RuntimeError("Async ssh functions from pve_cloud.lib.ssh should be called with the get_ssh_asyncio_loop context!")
+    
     if jump_host not in _async_jumphosts:
         print("initting jump host", jump_host)
         _async_jumphosts[jump_host] = await asyncssh.connect(
             jump_host, username=jump_user, known_hosts=None
         )
-
+    
     return _async_jumphosts[jump_host]
 
 
 async def check_ssh_open_async(check_host: str, jump_host: str = None):
+    cache_open = get_open_ssh_from_cache(check_host)
+    if cache_open is not None:
+        return cache_open
+
+
     jump_host_conn = None
     if jump_host:
         jump_host_conn = await get_jump_host_async(jump_host)
@@ -171,6 +195,7 @@ async def check_ssh_open_async(check_host: str, jump_host: str = None):
         writer.close()
         await writer.wait_closed()
 
+        set_open_ssh_cache(check_host, True)
         return True
     except (
         asyncio.TimeoutError,
@@ -178,6 +203,7 @@ async def check_ssh_open_async(check_host: str, jump_host: str = None):
         ConnectionRefusedError,
         ChannelOpenError,
     ):
+        set_open_ssh_cache(check_host, False)
         return False
 
 
@@ -224,11 +250,7 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
 
 @asynccontextmanager
 async def connect_host_async(
-    host: str,
-    jump_host: str = None,
-    port: int = 22,
-    user: str = "root",
-    jump_user: str = "root",
+    host: str, jump_host: str = None, port: int = 22, user: str = "root", jump_user: str = "root"
 ):
     jc = None
     if jump_host:
@@ -240,6 +262,7 @@ async def connect_host_async(
         known_hosts=None,
         # optionally pass tunnel here => equivalent to ansible ProxyJump
         tunnel=jc,
-        port=port,
+        port=port
     ) as conn:
         yield conn
+
