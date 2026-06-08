@@ -130,9 +130,9 @@ def export_pg_conn_str(args):
         print(
             f"pkill -f '{os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000' && rm -f {os.getcwd()}/.s.PGSQL.5432 && sleep 2"
         )
-        # create forward socket
+        # create forward socket; background, no command exection, keepalive options and forward
         print(
-            f"ssh -f -N -L {os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000 root@{jump_host}"
+            f"ssh -f -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L {os.getcwd()}/.s.PGSQL.5432:{cluster_vars['pve_haproxy_floating_ip_internal']}:5000 root@{jump_host}"
         )
         print(
             f"export PG_CONN_STR=\"postgres://postgres:{patroni_pass}@/tf_states?host={urllib.parse.quote(os.getcwd(), safe='')}&sslmode=disable\""

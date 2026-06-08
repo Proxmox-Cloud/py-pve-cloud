@@ -26,6 +26,9 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 
 # initialized / launched by pvcli connect_remote_cluster
 # it is launched on a proxmox host
+# todo: it would be nice to have some generic exception handeling / wrapping and passing down to the
+# rpyc clients for printing. like a wrapping RPycException class and general implcit try catch + handeling
+# on terraform-provider-pxc unpacking
 class PxrpcService(rpyc.Service):
 
     # functions for constructor
