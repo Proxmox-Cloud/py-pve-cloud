@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+import signal
 
 import dns.resolver
 import pve_cloud._version as pxc_version
@@ -26,9 +27,23 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 
 # initialized / launched by pvcli connect_remote_cluster
 # it is launched on a proxmox host
+
 # todo: it would be nice to have some generic exception handeling / wrapping and passing down to the
 # rpyc clients for printing. like a wrapping RPycException class and general implcit try catch + handeling
 # on terraform-provider-pxc unpacking
+
+# we once get the master pid, this is needed for the forkingserver
+# todo: probably not the best way for ipc shutdown, maybe use pipes?
+MASTER_PID = os.getpid()
+
+def shutdown_handler(signum, frame):
+    # wait a few seconds so clients can gracefully disconnect
+    time.sleep(5)
+    
+    # kill the entire process and all forks
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+
+
 class PxrpcService(rpyc.Service):
 
     # functions for constructor
@@ -57,7 +72,7 @@ class PxrpcService(rpyc.Service):
 
     def __init__(self):
         super().__init__()
-
+        
         # init services required by most functions
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
         self.cluster_vars = self.get_cluster_vars()
@@ -65,11 +80,6 @@ class PxrpcService(rpyc.Service):
             self.cluster_vars
         )  # we need postgres for almost anything
 
-    # rpyc doesnt have a clean shutdown methodology
-    # this is the cleanest i found without triggerin eof on the clients side
-    def shutdown(self):
-        time.sleep(5)  # workers get more time to shut down
-        os._exit(0)
 
     def exposed_e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
@@ -92,9 +102,10 @@ class PxrpcService(rpyc.Service):
     def exposed_get_node_network(self, node_name):
         return self.proxmox.nodes(node_name).network.get()
 
+    # rpyc doesnt have a clean shutdown methodology
+    # this is the cleanest i found without triggerin eof on the clients side
     def exposed_shutdown(self):
-        shutdown_thread = threading.Thread(target=self.shutdown)
-        shutdown_thread.start()
+        os.kill(MASTER_PID, signal.SIGTERM) # this triggers the shutdown handler
 
     def exposed_resolve_k8s_master(self, nameservers, a_rs_hostname):
         resolver = dns.resolver.Resolver()
@@ -215,6 +226,28 @@ class PxrpcService(rpyc.Service):
             return json.dumps([rdata.address for rdata in answers])
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             return "[]"
+        
+    def exposed_create_external_acme_tls(self, stack_fqdn, cert_config_json, ec_csr_json):
+        engine = create_engine(self.patroni_cstr)
+        with Session(engine) as session:
+
+            session.add(
+                AcmeX509(
+                    stack_fqdn=stack_fqdn,
+                    config=json.loads(cert_config_json),
+                    ec_csr=json.loads(ec_csr_json)
+                )
+            )
+            session.commit()
+
+    def exposed_delete_external_acme_tls(self, stack_fqdn):
+        engine = create_engine(self.patroni_cstr)
+        with Session(engine) as session:
+            stmt = delete(AcmeX509).where(
+                AcmeX509.stack_fqdn == stack_fqdn,
+            )
+            result = session.execute(stmt)
+            session.commit()
 
 
 # launch the rpc server
@@ -223,13 +256,16 @@ def main():
 
     print("launching on", sys.argv[1])
 
+    # register handler in master thread / process
+    signal.signal(signal.SIGTERM, shutdown_handler)
+
     # launch it threaded for sync (easy tasks no paralellism)
     if sys.argv[2] == "THREADED":
-        t = ThreadedServer(PxrpcService, port=int(sys.argv[1]))
-        t.start()
+        pxrpc_server = ThreadedServer(PxrpcService, port=int(sys.argv[1]))
+        pxrpc_server.start()
     elif sys.argv[2] == "FORKING":  # forking launch for paralellism
-        f = ForkingServer(PxrpcService, port=int(sys.argv[1]))
-        f.start()
+        pxrpc_server = ForkingServer(PxrpcService, port=int(sys.argv[1]))
+        pxrpc_server.start()
     else:
         raise RuntimeError("Unknown / missing 2 string arg THREADED/FORKING")
 
