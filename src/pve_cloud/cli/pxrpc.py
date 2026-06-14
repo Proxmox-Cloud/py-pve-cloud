@@ -2,14 +2,13 @@ import asyncio
 import json
 import multiprocessing
 import os
+import signal
 import socket
 import subprocess
 import sys
-import threading
 import time
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
-import signal
 
 import dns.resolver
 import pve_cloud._version as pxc_version
@@ -24,7 +23,6 @@ from sqlalchemy.orm import Session
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
 
-
 # initialized / launched by pvcli connect_remote_cluster
 # it is launched on a proxmox host
 
@@ -36,10 +34,11 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 # todo: probably not the best way for ipc shutdown, maybe use pipes?
 MASTER_PID = os.getpid()
 
+
 def shutdown_handler(signum, frame):
     # wait a few seconds so clients can gracefully disconnect
     time.sleep(5)
-    
+
     # kill the entire process and all forks
     os.killpg(os.getpgrp(), signal.SIGKILL)
 
@@ -72,14 +71,13 @@ class PxrpcService(rpyc.Service):
 
     def __init__(self):
         super().__init__()
-        
+
         # init services required by most functions
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
         self.cluster_vars = self.get_cluster_vars()
         self.patroni_cstr = self.get_pg_conn_str(
             self.cluster_vars
         )  # we need postgres for almost anything
-
 
     def exposed_e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
@@ -105,7 +103,7 @@ class PxrpcService(rpyc.Service):
     # rpyc doesnt have a clean shutdown methodology
     # this is the cleanest i found without triggerin eof on the clients side
     def exposed_shutdown(self):
-        os.kill(MASTER_PID, signal.SIGTERM) # this triggers the shutdown handler
+        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
 
     def exposed_resolve_k8s_master(self, nameservers, a_rs_hostname):
         resolver = dns.resolver.Resolver()
@@ -226,8 +224,10 @@ class PxrpcService(rpyc.Service):
             return json.dumps([rdata.address for rdata in answers])
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             return "[]"
-        
-    def exposed_create_external_acme_tls(self, stack_fqdn, cert_config_json, ec_csr_json):
+
+    def exposed_create_external_acme_tls(
+        self, stack_fqdn, cert_config_json, ec_csr_json
+    ):
         engine = create_engine(self.patroni_cstr)
         with Session(engine) as session:
 
@@ -235,7 +235,7 @@ class PxrpcService(rpyc.Service):
                 AcmeX509(
                     stack_fqdn=stack_fqdn,
                     config=json.loads(cert_config_json),
-                    ec_csr=json.loads(ec_csr_json)
+                    ec_csr=json.loads(ec_csr_json),
                 )
             )
             session.commit()
