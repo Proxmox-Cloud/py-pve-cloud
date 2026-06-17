@@ -27,7 +27,7 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 
 # services need to implement the shutdown function
 class PxServiceEnum(StrEnum):
-    PXRPC = "PXCRPC"
+    PXRPC = "PXRPC"
     PROXMOXER = "PROXMOXER"
 
 
@@ -320,13 +320,14 @@ class PxrpcService(rpyc.Service):
 def main():
     from rpyc.utils.server import ForkingServer, ThreadedServer
 
-    print("launching on", sys.argv[1])
+    print("launching on", sys.argv[1], sys.argv[2], sys.argv[3])
 
     # register handler in master thread / process
     signal.signal(signal.SIGTERM, shutdown_handler)
 
     service_to_launch = None
-    match PxServiceEnum[sys.argv[3]]:
+    match PxServiceEnum(sys.argv[3]):
+        # here custom inits could take place (using classpartial / constructor)
         case PxServiceEnum.PXRPC:
             service_to_launch = PxrpcService
         case PxServiceEnum.PROXMOXER:
@@ -395,8 +396,10 @@ def _launch_pxrpc_base(
 
             # run detached pxrpc server - we use this to execute python code remotely on the jump host
             # pkill -f pxrpc to cleanup
+            pxrpc_cmd = f"export PYTHONUNBUFFERED=1; /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} {rpyc_service} >> /var/log/pxrpc-{open_port_remote}.log 2>&1"
+            print("pxrpc cmd", pxrpc_cmd)
             pve_host_conn.run(
-                f"export PYTHONUNBUFFERED=1; /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} {rpyc_service} >> /var/log/pxrpc-{open_port_remote}.log 2>&1",
+                pxrpc_cmd,
                 disown=True,
             )
 
