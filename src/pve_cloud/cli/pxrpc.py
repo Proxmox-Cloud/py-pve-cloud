@@ -7,9 +7,9 @@ import socket
 import subprocess
 import sys
 import time
-from enum import StrEnum
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
+from enum import StrEnum
 
 import dns.resolver
 import pve_cloud._version as pxc_version
@@ -24,10 +24,12 @@ from sqlalchemy.orm import Session
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
 
+
 # services need to implement the shutdown function
 class PxServiceEnum(StrEnum):
     PXRPC = "PXCRPC"
     PROXMOXER = "PROXMOXER"
+
 
 # initialized / launched by pvcli connect_remote_cluster
 # it is launched on a proxmox host
@@ -39,6 +41,7 @@ class PxServiceEnum(StrEnum):
 # we once get the master pid, this is needed for the forkingserver
 # todo: probably not the best way for ipc shutdown, maybe use pipes?
 MASTER_PID = os.getpid()
+
 
 def shutdown_handler(signum, frame):
     # wait a few seconds so clients can gracefully disconnect
@@ -83,6 +86,7 @@ class RemoteProxmoxApi(rpyc.Service):
     def get_node_network(self, node_name):
         return self.proxmox.nodes(node_name).network.get()
 
+
 @rpyc.service
 class PxrpcService(rpyc.Service):
 
@@ -110,7 +114,7 @@ class PxrpcService(rpyc.Service):
 
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
 
-    def __init__(self, cluster_vars = None, patroni_cstr = None):
+    def __init__(self, cluster_vars=None, patroni_cstr=None):
         super().__init__()
 
         if cluster_vars:
@@ -288,9 +292,7 @@ class PxrpcService(rpyc.Service):
             return "[]"
 
     @rpyc.exposed
-    def create_external_acme_tls(
-        self, stack_fqdn, cert_config_json, ec_csr_json
-    ):
+    def create_external_acme_tls(self, stack_fqdn, cert_config_json, ec_csr_json):
         engine = create_engine(self.patroni_cstr)
         with Session(engine) as session:
 
@@ -322,14 +324,14 @@ def main():
 
     # register handler in master thread / process
     signal.signal(signal.SIGTERM, shutdown_handler)
-    
+
     service_to_launch = None
     match PxServiceEnum[sys.argv[3]]:
         case PxServiceEnum.PXRPC:
             service_to_launch = PxrpcService
         case PxServiceEnum.PROXMOXER:
             service_to_launch = RemoteProxmoxApi
-    
+
     # launch it threaded for sync (easy tasks no paralellism)
     if sys.argv[2] == "THREADED":
         pxrpc_server = ThreadedServer(service_to_launch, port=int(sys.argv[1]))
@@ -343,7 +345,12 @@ def main():
 
 @contextmanager
 def _launch_pxrpc_base(
-    jump_host: str, pve_host: str, rpyc_server_type: str, rpyc_service: PxServiceEnum, init_venv: bool = False, local_pypi_ip: str = None
+    jump_host: str,
+    pve_host: str,
+    rpyc_server_type: str,
+    rpyc_service: PxServiceEnum,
+    init_venv: bool = False,
+    local_pypi_ip: str = None,
 ):
     with Connection(host=jump_host, user="root") as jump_host_conn:
         with Connection(
@@ -424,7 +431,13 @@ class RPyCConnectionWrapper:
 
 # client launch contextmanagers:
 @contextmanager
-def launch_pxrpc(jump_host: str, pve_host: str, init_venv: bool = False, local_pypi_ip: str = None, service: PxServiceEnum = PxServiceEnum.PXRPC):
+def launch_pxrpc(
+    jump_host: str,
+    pve_host: str,
+    init_venv: bool = False,
+    local_pypi_ip: str = None,
+    service: PxServiceEnum = PxServiceEnum.PXRPC,
+):
     with _launch_pxrpc_base(
         jump_host,
         pve_host,
@@ -498,9 +511,20 @@ class AsyncRPyCPoolWrapper:
 
 
 @asynccontextmanager
-async def launch_pxrpc_async(jump_host: str, pve_host: str, init_venv: bool = False, local_pypi_ip: str = None, service: PxServiceEnum = PxServiceEnum.PXRPC):
+async def launch_pxrpc_async(
+    jump_host: str,
+    pve_host: str,
+    init_venv: bool = False,
+    local_pypi_ip: str = None,
+    service: PxServiceEnum = PxServiceEnum.PXRPC,
+):
     with _launch_pxrpc_base(
-        jump_host, pve_host, "FORKING", service, init_venv=init_venv, local_pypi_ip=local_pypi_ip
+        jump_host,
+        pve_host,
+        "FORKING",
+        service,
+        init_venv=init_venv,
+        local_pypi_ip=local_pypi_ip,
     ) as (local_open_port, _):
 
         NUM_WORKERS = 4

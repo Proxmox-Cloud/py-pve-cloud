@@ -94,6 +94,7 @@ def get_ssh_master_kubeconfig(cluster_vars, stack_name):
 
     return yaml.safe_dump(admin_conf)
 
+
 # todo: rename function and implement rsync terraform cache mirroring like in terraform e2e suite
 def export_pg_conn_str(args):
     if not args.target_pve and not args.cloud_domain:

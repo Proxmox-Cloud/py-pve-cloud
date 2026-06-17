@@ -8,7 +8,7 @@ from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
-from pve_cloud.cli.pxrpc import launch_pxrpc, PxServiceEnum
+from pve_cloud.cli.pxrpc import PxServiceEnum, launch_pxrpc
 from pve_cloud.lib.inventory import (get_cloud_domain, get_cluster_vars,
                                      get_online_pve_host, get_pve_inventory,
                                      get_target_cluster)
@@ -109,7 +109,11 @@ def connect_remote_cluster(args):
     jump_host = args.jump_hosts.split(",")[0]
 
     with launch_pxrpc(
-        jump_host, args.pve_host, init_venv=True, local_pypi_ip=args.local_pypi_ip, service=PxServiceEnum.PROXMOXER
+        jump_host,
+        args.pve_host,
+        init_venv=True,
+        local_pypi_ip=args.local_pypi_ip,
+        service=PxServiceEnum.PROXMOXER,
     ) as (pxrpc, pve_host):
 
         def read_cluster_vars():
