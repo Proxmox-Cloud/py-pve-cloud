@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import time
+from enum import StrEnum
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 
@@ -23,6 +24,11 @@ from sqlalchemy.orm import Session
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
 
+# services need to implement the shutdown function
+class PxServiceEnum(StrEnum):
+    PXRPC = "PXCRPC"
+    PROXMOXER = "PROXMOXER"
+
 # initialized / launched by pvcli connect_remote_cluster
 # it is launched on a proxmox host
 
@@ -34,7 +40,6 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
 # todo: probably not the best way for ipc shutdown, maybe use pipes?
 MASTER_PID = os.getpid()
 
-
 def shutdown_handler(signum, frame):
     # wait a few seconds so clients can gracefully disconnect
     time.sleep(5)
@@ -43,6 +48,42 @@ def shutdown_handler(signum, frame):
     os.killpg(os.getpgrp(), signal.SIGKILL)
 
 
+@rpyc.service
+class RemoteProxmoxApi(rpyc.Service):
+
+    def __init__(self):
+        super().__init__()
+
+        # init services required by most functions
+        self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
+
+    # rpyc doesnt have a clean shutdown methodology
+    # this is the cleanest i found without triggerin eof on the clients side
+    @rpyc.exposed
+    def shutdown(self):
+        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
+
+    @rpyc.exposed
+    def get_pve_cluster_name(self):
+        # try get the cluster name
+        cluster_name = None
+        status_resp = self.proxmox.cluster.status.get()
+        for entry in status_resp:
+            if entry["id"] == "cluster":
+                cluster_name = entry["name"]
+                break
+
+        return cluster_name
+
+    @rpyc.exposed
+    def get_nodes(self):
+        return self.proxmox.nodes.get()
+
+    @rpyc.exposed
+    def get_node_network(self, node_name):
+        return self.proxmox.nodes(node_name).network.get()
+
+@rpyc.service
 class PxrpcService(rpyc.Service):
 
     # functions for constructor
@@ -69,43 +110,34 @@ class PxrpcService(rpyc.Service):
 
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
 
-    def __init__(self):
+    def __init__(self, cluster_vars = None, patroni_cstr = None):
         super().__init__()
 
-        # init services required by most functions
-        self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
-        self.cluster_vars = self.get_cluster_vars()
-        self.patroni_cstr = self.get_pg_conn_str(
-            self.cluster_vars
-        )  # we need postgres for almost anything
+        if cluster_vars:
+            self.cluster_vars = cluster_vars
+        else:
+            self.cluster_vars = self.get_cluster_vars()
 
-    def exposed_e2e_return(self):
+        if patroni_cstr:
+            self.patroni_cstr = patroni_cstr
+        else:
+            self.patroni_cstr = self.get_pg_conn_str(
+                self.cluster_vars
+            )  # we need postgres for almost anything
+
+    @rpyc.exposed
+    def e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
         return self.patroni_cstr
 
-    def exposed_get_pve_cluster_name(self):
-        # try get the cluster name
-        cluster_name = None
-        status_resp = self.proxmox.cluster.status.get()
-        for entry in status_resp:
-            if entry["id"] == "cluster":
-                cluster_name = entry["name"]
-                break
-
-        return cluster_name
-
-    def exposed_get_nodes(self):
-        return self.proxmox.nodes.get()
-
-    def exposed_get_node_network(self, node_name):
-        return self.proxmox.nodes(node_name).network.get()
-
     # rpyc doesnt have a clean shutdown methodology
     # this is the cleanest i found without triggerin eof on the clients side
-    def exposed_shutdown(self):
+    @rpyc.exposed
+    def shutdown(self):
         os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
 
-    def exposed_resolve_k8s_master(self, nameservers, a_rs_hostname):
+    @rpyc.exposed
+    def resolve_k8s_master(self, nameservers, a_rs_hostname):
         resolver = dns.resolver.Resolver()
         resolver.nameservers = nameservers
         ddns_answer = resolver.resolve(a_rs_hostname)
@@ -114,7 +146,8 @@ class PxrpcService(rpyc.Service):
 
         return ddns_ips
 
-    def exposed_e2e_inject_cert(self, stack_fqdn, record0):
+    @rpyc.exposed
+    def e2e_inject_cert(self, stack_fqdn, record0):
         engine = create_engine(self.patroni_cstr)
 
         # update certs and mirror pull secret
@@ -129,7 +162,8 @@ class PxrpcService(rpyc.Service):
             session.merge(copy_cert)
             session.commit()
 
-    def exposed_inject_cloud_secret(
+    @rpyc.exposed
+    def inject_cloud_secret(
         self, cloud_domain, secret_name, secret_data_json, secret_type
     ):
         engine = create_engine(self.patroni_cstr)
@@ -151,7 +185,31 @@ class PxrpcService(rpyc.Service):
                 session.rollback()
                 return False
 
-    def exposed_delete_cloud_secret(self, cloud_domain, secret_name):
+    @rpyc.exposed
+    def merge_cloud_secret(
+        self, cloud_domain, secret_name, secret_data_json, secret_type
+    ):
+        engine = create_engine(self.patroni_cstr)
+
+        with Session(engine) as session:
+            try:
+                session.merge(
+                    ProxmoxCloudSecrets(
+                        cloud_domain=cloud_domain,
+                        secret_name=secret_name,
+                        secret_data=json.loads(secret_data_json),
+                        secret_type=secret_type,
+                    )
+                )
+                session.commit()
+                return True
+
+            except IntegrityError as e:
+                session.rollback()
+                return False
+
+    @rpyc.exposed
+    def delete_cloud_secret(self, cloud_domain, secret_name):
 
         engine = create_engine(self.patroni_cstr)
 
@@ -164,7 +222,8 @@ class PxrpcService(rpyc.Service):
             result = session.execute(stmt)
             session.commit()
 
-    def exposed_get_cloud_secret(self, cloud_domain, secret_name):
+    @rpyc.exposed
+    def get_cloud_secret(self, cloud_domain, secret_name):
 
         engine = create_engine(self.patroni_cstr)
 
@@ -181,7 +240,8 @@ class PxrpcService(rpyc.Service):
         secret_data_json = json.dumps(record.secret_data)
         return secret_data_json
 
-    def exposed_get_cloud_secrets(self, cloud_domain, secret_type):
+    @rpyc.exposed
+    def get_cloud_secrets(self, cloud_domain, secret_type):
         engine = create_engine(self.patroni_cstr)
 
         with Session(engine) as session:
@@ -196,7 +256,8 @@ class PxrpcService(rpyc.Service):
         )
         return secrets_json
 
-    def exposed_get_vm_vars_blake(self, blake_ids_json, cloud_domain):
+    @rpyc.exposed
+    def get_vm_vars_blake(self, blake_ids_json, cloud_domain):
         engine = create_engine(self.patroni_cstr)
 
         blake_ids = json.loads(blake_ids_json)
@@ -211,7 +272,8 @@ class PxrpcService(rpyc.Service):
         vars_json = json.dumps({entry.blake_id: entry.vm_vars for entry in records})
         return vars_json
 
-    def exposed_get_dns_a_record(self, host):
+    @rpyc.exposed
+    def get_dns_a_record(self, host):
         # get nameservers of the cloud (global in all cluster vars defined)
         resolver = dns.resolver.Resolver()
         resolver.nameservers = [
@@ -225,7 +287,8 @@ class PxrpcService(rpyc.Service):
         except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
             return "[]"
 
-    def exposed_create_external_acme_tls(
+    @rpyc.exposed
+    def create_external_acme_tls(
         self, stack_fqdn, cert_config_json, ec_csr_json
     ):
         engine = create_engine(self.patroni_cstr)
@@ -240,7 +303,8 @@ class PxrpcService(rpyc.Service):
             )
             session.commit()
 
-    def exposed_delete_external_acme_tls(self, stack_fqdn):
+    @rpyc.exposed
+    def delete_external_acme_tls(self, stack_fqdn):
         engine = create_engine(self.patroni_cstr)
         with Session(engine) as session:
             stmt = delete(AcmeX509).where(
@@ -258,13 +322,20 @@ def main():
 
     # register handler in master thread / process
     signal.signal(signal.SIGTERM, shutdown_handler)
-
+    
+    service_to_launch = None
+    match PxServiceEnum[sys.argv[3]]:
+        case PxServiceEnum.PXRPC:
+            service_to_launch = PxrpcService
+        case PxServiceEnum.PROXMOXER:
+            service_to_launch = RemoteProxmoxApi
+    
     # launch it threaded for sync (easy tasks no paralellism)
     if sys.argv[2] == "THREADED":
-        pxrpc_server = ThreadedServer(PxrpcService, port=int(sys.argv[1]))
+        pxrpc_server = ThreadedServer(service_to_launch, port=int(sys.argv[1]))
         pxrpc_server.start()
     elif sys.argv[2] == "FORKING":  # forking launch for paralellism
-        pxrpc_server = ForkingServer(PxrpcService, port=int(sys.argv[1]))
+        pxrpc_server = ForkingServer(service_to_launch, port=int(sys.argv[1]))
         pxrpc_server.start()
     else:
         raise RuntimeError("Unknown / missing 2 string arg THREADED/FORKING")
@@ -272,7 +343,7 @@ def main():
 
 @contextmanager
 def _launch_pxrpc_base(
-    jump_host, pve_host, rpyc_server_type, init_venv=False, local_pypi_ip=None
+    jump_host: str, pve_host: str, rpyc_server_type: str, rpyc_service: PxServiceEnum, init_venv: bool = False, local_pypi_ip: str = None
 ):
     with Connection(host=jump_host, user="root") as jump_host_conn:
         with Connection(
@@ -318,7 +389,7 @@ def _launch_pxrpc_base(
             # run detached pxrpc server - we use this to execute python code remotely on the jump host
             # pkill -f pxrpc to cleanup
             pve_host_conn.run(
-                f"export PYTHONUNBUFFERED=1; /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} >> /var/log/pxrpc-{open_port_remote}.log 2>&1",
+                f"export PYTHONUNBUFFERED=1; /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} {rpyc_service} >> /var/log/pxrpc-{open_port_remote}.log 2>&1",
                 disown=True,
             )
 
@@ -353,11 +424,12 @@ class RPyCConnectionWrapper:
 
 # client launch contextmanagers:
 @contextmanager
-def launch_pxrpc(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
+def launch_pxrpc(jump_host: str, pve_host: str, init_venv: bool = False, local_pypi_ip: str = None, service: PxServiceEnum = PxServiceEnum.PXRPC):
     with _launch_pxrpc_base(
         jump_host,
         pve_host,
         "THREADED",
+        service,
         init_venv=init_venv,
         local_pypi_ip=local_pypi_ip,
     ) as (local_open_port, pve_host_conn):
@@ -426,9 +498,9 @@ class AsyncRPyCPoolWrapper:
 
 
 @asynccontextmanager
-async def launch_pxrpc_async(jump_host, pve_host, init_venv=False, local_pypi_ip=None):
+async def launch_pxrpc_async(jump_host: str, pve_host: str, init_venv: bool = False, local_pypi_ip: str = None, service: PxServiceEnum = PxServiceEnum.PXRPC):
     with _launch_pxrpc_base(
-        jump_host, pve_host, "FORKING", init_venv=init_venv, local_pypi_ip=local_pypi_ip
+        jump_host, pve_host, "FORKING", service, init_venv=init_venv, local_pypi_ip=local_pypi_ip
     ) as (local_open_port, _):
 
         NUM_WORKERS = 4
