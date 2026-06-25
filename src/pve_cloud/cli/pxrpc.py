@@ -292,6 +292,45 @@ class PxrpcService(rpyc.Service):
             return "[]"
 
     @rpyc.exposed
+    def create_cname_record(self, zone, name, cname, ttl):
+        keyring = dns.tsigkeyring.from_text({
+            "internal.": self.internal_bind_key
+        })
+
+        update = dns.update.Update(zone, keyring=keyring)
+        update.add(name, ttl, 'CNAME', cname)
+
+        try:
+            response = dns.query.tcp(update, self.cluster_vars["bind_master_ip"])
+
+            if response.rcode() != dns.rcode.NOERROR:
+                return False, dns.rcode.to_text(response.rcode())
+
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+
+    @rpyc.exposed
+    def delete_cname_record(self, zone, name):
+        keyring = dns.tsigkeyring.from_text({
+            "internal.": self.internal_bind_key
+        })
+
+        update = dns.update.Update(zone, keyring=keyring)
+        update.delete(name, 'CNAME')
+
+        try:
+            response = dns.query.tcp(update, self.cluster_vars["bind_master_ip"])
+
+            if response.rcode() != dns.rcode.NOERROR:
+                return False, dns.rcode.to_text(response.rcode())
+
+            return True, None
+        except Exception as e:
+            return False, str(e)
+
+    @rpyc.exposed
     def create_external_acme_tls(self, stack_fqdn, cert_config_json, ec_csr_json):
         engine = create_engine(self.patroni_cstr)
         with Session(engine) as session:
