@@ -293,12 +293,10 @@ class PxrpcService(rpyc.Service):
 
     @rpyc.exposed
     def create_cname_record(self, zone, name, cname, ttl):
-        keyring = dns.tsigkeyring.from_text({
-            "internal.": self.internal_bind_key
-        })
+        keyring = dns.tsigkeyring.from_text({"internal.": self.internal_bind_key})
 
         update = dns.update.Update(zone, keyring=keyring)
-        update.add(name, ttl, 'CNAME', cname)
+        update.add(name, ttl, "CNAME", cname)
 
         try:
             response = dns.query.tcp(update, self.cluster_vars["bind_master_ip"])
@@ -310,15 +308,12 @@ class PxrpcService(rpyc.Service):
         except Exception as e:
             return False, str(e)
 
-
     @rpyc.exposed
     def delete_cname_record(self, zone, name):
-        keyring = dns.tsigkeyring.from_text({
-            "internal.": self.internal_bind_key
-        })
+        keyring = dns.tsigkeyring.from_text({"internal.": self.internal_bind_key})
 
         update = dns.update.Update(zone, keyring=keyring)
-        update.delete(name, 'CNAME')
+        update.delete(name, "CNAME")
 
         try:
             response = dns.query.tcp(update, self.cluster_vars["bind_master_ip"])
