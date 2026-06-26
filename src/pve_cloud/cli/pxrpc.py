@@ -118,13 +118,28 @@ class PxrpcService(rpyc.Service):
 
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
 
-    def __init__(self, cluster_vars=None, patroni_cstr=None):
+    def get_internal_bind_key(self):
+        result_key = subprocess.run(
+            ["cat", "/etc/pve/cloud/secrets/internal.key"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        return re.search(r'secret\s+"([^"]+)";', result_key.stdout).group(1)
+
+    def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None):
         super().__init__()
 
         if cluster_vars:
             self.cluster_vars = cluster_vars
         else:
             self.cluster_vars = self.get_cluster_vars()
+
+        if internal_bind_key:
+            self.internal_bind_key = internal_bind_key
+        else:
+            self.internal_bind_key = self.get_internal_bind_key()
 
         if patroni_cstr:
             self.patroni_cstr = patroni_cstr
