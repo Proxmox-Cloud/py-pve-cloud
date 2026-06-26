@@ -7,11 +7,15 @@ import socket
 import subprocess
 import sys
 import time
+import re
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
 
 import dns.resolver
+import dns.tsigkeyring
+import dns.update
+import dns.rcode
 import pve_cloud._version as pxc_version
 import rpyc
 import yaml
