@@ -21,13 +21,13 @@ import rpyc
 import yaml
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
+from pve_cloud_schemas.validate import validate_cluster_vars
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
-from pve_cloud_schemas.validate import validate_cluster_vars
 
 
 # services need to implement the shutdown function

@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import yaml
 from proxmoxer import ProxmoxAPI
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv, validate_cluster_vars
+from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
+                                        validate_cluster_vars)
 
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)

@@ -4,16 +4,16 @@ import urllib.parse
 
 import dns.resolver
 import paramiko
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 import yaml
 from fabric import Connection
+from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
+                                        validate_cluster_vars)
 
 from pve_cloud.cli.pxrpc import launch_pxrpc
 from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
                                      get_online_pve_host_from_target_pve,
                                      get_pve_inventory, get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
-from pve_cloud_schemas.validate import validate_cluster_vars
 
 
 def get_online_pve_host_prsr(args):

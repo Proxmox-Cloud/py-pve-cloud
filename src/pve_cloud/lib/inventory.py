@@ -7,7 +7,8 @@ import paramiko
 import pve_cloud._version
 import yaml
 from proxmoxer import ProxmoxAPI
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv, validate_cluster_vars
+from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
+                                        validate_cluster_vars)
 
 from pve_cloud.lib.ssh import check_ssh_open, connect_host
 
