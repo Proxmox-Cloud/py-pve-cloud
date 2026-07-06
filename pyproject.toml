@@ -8,7 +8,6 @@ authors = [{ name = "Tobias Huebner", email = "tobias.huebner@vmzberlin.com" }]
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE.md"]
 dependencies = [
-  "PyYAML==6.0.3",
   "psycopg2-binary==2.9.11",
   "SQLAlchemy==2.0.45",
   "alembic==1.18.0",
@@ -17,7 +16,8 @@ dependencies = [
   "dnspython==2.8.0",
   "rpyc==6.0.2",
   "fabric==3.2.3",
-  "asyncssh==2.22.0"
+  "asyncssh==2.22.0",
+  "pve-cloud-schemas>=3.1.0,<3.2.0"
 ]
 dynamic = ["version"]
 

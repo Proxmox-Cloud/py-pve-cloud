@@ -13,6 +13,7 @@ build_commands = [
   ]
 ]
 dyn_version_py_path = "src/pve_cloud/_version.py"
+sub_rebuild_keys = [ "version.pve-cloud-schemas" ]
 
 [local]
 dyn_version_py_path = "src/pve_cloud/_version.py"

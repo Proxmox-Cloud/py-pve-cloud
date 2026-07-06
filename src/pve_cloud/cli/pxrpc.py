@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
+from pve_cloud_schemas.validate import validate_cluster_vars
 
 
 # services need to implement the shutdown function
@@ -103,6 +104,7 @@ class PxrpcService(rpyc.Service):
             check=True,
         )
         cluster_vars = yaml.safe_load(result_vars.stdout)
+        validate_cluster_vars(cluster_vars)
 
         return cluster_vars
 

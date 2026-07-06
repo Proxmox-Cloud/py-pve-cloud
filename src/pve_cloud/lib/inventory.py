@@ -7,7 +7,7 @@ import paramiko
 import pve_cloud._version
 import yaml
 from proxmoxer import ProxmoxAPI
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv, validate_cluster_vars
 
 from pve_cloud.lib.ssh import check_ssh_open, connect_host
 
@@ -288,5 +288,6 @@ def get_cluster_vars(pve_host, jump_host=None):
         _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
 
         cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+        validate_cluster_vars(cluster_vars)
 
         return cluster_vars

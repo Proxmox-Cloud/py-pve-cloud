@@ -4,6 +4,7 @@ import urllib.parse
 
 import dns.resolver
 import paramiko
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv
 import yaml
 from fabric import Connection
 
@@ -12,6 +13,7 @@ from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
                                      get_online_pve_host_from_target_pve,
                                      get_pve_inventory, get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
+from pve_cloud_schemas.validate import validate_cluster_vars
 
 
 def get_online_pve_host_prsr(args):
@@ -30,6 +32,7 @@ def get_ssh_remote_master_kubeconfig(stack_name, external_san, jump_host, pve_ho
 
         result = pve_host_conn.run("cat /etc/pve/cloud/cluster_vars.yaml")
         cluster_vars = yaml.safe_load(result.stdout.strip())
+        validate_cluster_vars(cluster_vars)
 
         ddns_ips = pxrpc.resolve_k8s_master(
             [cluster_vars["bind_master_ip"], cluster_vars["bind_slave_ip"]],
@@ -120,6 +123,7 @@ def export_pg_conn_str(args):
     with connect_host(pve_host, jump_host=jump_host) as ssh:
         _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
         cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+        validate_cluster_vars(cluster_vars)
 
         _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/secrets/patroni.pass")
         patroni_pass = stdout.read().decode("utf-8").strip()

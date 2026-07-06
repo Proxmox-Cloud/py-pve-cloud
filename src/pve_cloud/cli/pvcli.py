@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import yaml
 from proxmoxer import ProxmoxAPI
-from pve_cloud_schemas.validate import validate_cloud_dyn_inv
+from pve_cloud_schemas.validate import validate_cloud_dyn_inv, validate_cluster_vars
 
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
@@ -118,7 +118,10 @@ def connect_remote_cluster(args):
 
         def read_cluster_vars():
             result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
-            return yaml.safe_load(result.stdout.strip())
+            cluster_vars = yaml.safe_load(result.stdout.strip())
+            validate_cluster_vars(cluster_vars)
+
+            return cluster_vars
 
         init_funcs = SimpleNamespace(
             cluster_vars=read_cluster_vars,
@@ -200,6 +203,7 @@ def print_kubeconfig(args):
             _, stdout, _ = pve_ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
 
             cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+            validate_cluster_vars(cluster_vars)
 
             print(get_ssh_master_kubeconfig(cluster_vars, inventory["stack_name"]))
 
