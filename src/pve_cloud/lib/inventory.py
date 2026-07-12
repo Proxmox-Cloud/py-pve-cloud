@@ -267,13 +267,15 @@ def get_online_pve_host(pve_inventory, target_cluster):
             # perform additional check on clusters vars, hosts that have no pve corosync vote
             # should be excluded as they are optional
             cluster_vars = get_cluster_vars(online_pve_host, jump_host=online_jump_host)
-            if pve_host in cluster_vars["pve_host_vars"] and "pve_corosync_vote" in cluster_vars["pve_host_vars"][pve_host]:
+            if (
+                pve_host in cluster_vars["pve_host_vars"]
+                and "pve_corosync_vote" in cluster_vars["pve_host_vars"][pve_host]
+            ):
                 if not cluster_vars["pve_host_vars"][pve_host]["pve_corosync_vote"]:
                     online_pve_host = None
-                    continue # look for another host
+                    continue  # look for another host
 
-            break # checks passed
-
+            break  # checks passed
 
     if not online_pve_host:
         raise RuntimeError("Could not find online pve host for {target_cluster}")
