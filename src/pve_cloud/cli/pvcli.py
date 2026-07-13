@@ -10,9 +10,9 @@ from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
 from pve_cloud.cli.pxrpc import PxServiceEnum, launch_pxrpc
-from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
-                                     get_pve_inventory, get_target_cluster,
-                                     get_cloud_dyn_inv_path)
+from pve_cloud.lib.inventory import (get_cloud_domain, get_cloud_dyn_inv_path,
+                                     get_online_pve_host, get_pve_inventory,
+                                     get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
 
 
