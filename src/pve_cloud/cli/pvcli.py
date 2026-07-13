@@ -11,14 +11,14 @@ from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
 from pve_cloud.cli.pxrpc import PxServiceEnum, launch_pxrpc
 from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
-                                     get_pve_inventory, get_target_cluster)
+                                     get_pve_inventory, get_target_cluster,
+                                     get_cloud_dyn_inv_path)
 from pve_cloud.lib.ssh import connect_host
-
-inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
 
 # init_funcs needs
 def init_dyn_inv(args, init_funcs):
+    inv_path = get_cloud_dyn_inv_path()
     # try load current dynamic inventory
     if os.path.exists(inv_path):
         with open(inv_path, "r") as file:

@@ -66,10 +66,17 @@ def get_avahi_iterator():
             )
 
 
+def get_cloud_dyn_inv_path():
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return os.path.expanduser("~/.pve-cloud-e2e-dyn-inv.yaml")
+
+    return os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+
+
 def get_cloud_domain(target_pve):
-    inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+    inv_path = get_cloud_dyn_inv_path()
     if os.path.exists(inv_path):
-        with open(os.path.expanduser("~/.pve-cloud-dyn-inv.yaml"), "r") as f:
+        with open(inv_path, "r") as f:
             pve_inventory = yaml.safe_load(f)
 
         validate_cloud_dyn_inv(pve_inventory)
@@ -96,7 +103,7 @@ def get_pve_inventory(
 ):
     # first we try to load the manually created inventory via pvcli connect
     # as it takes precedence over avahi
-    inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
+    inv_path = get_cloud_dyn_inv_path()
     if os.path.exists(inv_path):
         with open(inv_path, "r") as file:
             dynamic_inventory = yaml.safe_load(file)
