@@ -10,10 +10,11 @@ from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
 from pve_cloud.cli.pxrpc import PxServiceEnum, launch_pxrpc
-from pve_cloud.lib.inventory import (get_cloud_domain, get_cluster_vars,
+from pve_cloud.lib.inventory import (get_cloud_domain,
                                      get_online_pve_host, get_pve_inventory,
                                      get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
+from pve_cloud_schemas.validate import validate_cluster_vars
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
@@ -118,6 +119,14 @@ def connect_remote_cluster(args):
     ) as (pxrpc, pve_host):
 
         def read_cluster_vars():
+            # check if the variables exist at all
+            result = pve_host.run("test -f /etc/pve/cloud/cluster_vars.yaml", warn=True)
+
+            # return none if they dont exist
+            if result.failed:
+                print("Cluster vars not present, initializing new cluster...")
+                return None
+
             result = pve_host.run("cat /etc/pve/cloud/cluster_vars.yaml")
             cluster_vars = yaml.safe_load(result.stdout.strip())
             validate_cluster_vars(cluster_vars)
@@ -138,7 +147,22 @@ def connect_cluster(args):
     proxmox = ProxmoxAPI(args.pve_host, user="root", backend="ssh_paramiko")
 
     def read_cluster_vars():
-        return get_cluster_vars(args.pve_host)
+        with connect_host(args.pve_host) as ssh:
+            # first check if the variables already exist
+            _, stdout, _ = ssh.exec_command("test -f /etc/pve/cloud/cluster_vars.yaml && echo 'exists'")
+            exists = stdout.read().decode("utf-8").strip() == "exists"
+
+            if not exists:
+                print("Cluster vars not present, initializing new cluster...")
+                return None # return none for dyn inv handler func
+
+            # fetching from pmxcfs needs cat, ftp does not work
+            _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
+
+            cluster_vars = yaml.safe_load(stdout.read().decode("utf-8"))
+            validate_cluster_vars(cluster_vars)
+
+            return cluster_vars
 
     def get_cluster_name():
         cluster_name = None
