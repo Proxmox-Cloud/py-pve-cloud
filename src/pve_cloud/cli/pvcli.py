@@ -10,11 +10,9 @@ from pve_cloud_schemas.validate import (validate_cloud_dyn_inv,
 from pve_cloud.cli.pvclu import (get_ssh_master_kubeconfig,
                                  get_ssh_remote_master_kubeconfig)
 from pve_cloud.cli.pxrpc import PxServiceEnum, launch_pxrpc
-from pve_cloud.lib.inventory import (get_cloud_domain,
-                                     get_online_pve_host, get_pve_inventory,
-                                     get_target_cluster)
+from pve_cloud.lib.inventory import (get_cloud_domain, get_online_pve_host,
+                                     get_pve_inventory, get_target_cluster)
 from pve_cloud.lib.ssh import connect_host
-from pve_cloud_schemas.validate import validate_cluster_vars
 
 inv_path = os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
@@ -149,12 +147,14 @@ def connect_cluster(args):
     def read_cluster_vars():
         with connect_host(args.pve_host) as ssh:
             # first check if the variables already exist
-            _, stdout, _ = ssh.exec_command("test -f /etc/pve/cloud/cluster_vars.yaml && echo 'exists'")
+            _, stdout, _ = ssh.exec_command(
+                "test -f /etc/pve/cloud/cluster_vars.yaml && echo 'exists'"
+            )
             exists = stdout.read().decode("utf-8").strip() == "exists"
 
             if not exists:
                 print("Cluster vars not present, initializing new cluster...")
-                return None # return none for dyn inv handler func
+                return None  # return none for dyn inv handler func
 
             # fetching from pmxcfs needs cat, ftp does not work
             _, stdout, _ = ssh.exec_command("cat /etc/pve/cloud/cluster_vars.yaml")
