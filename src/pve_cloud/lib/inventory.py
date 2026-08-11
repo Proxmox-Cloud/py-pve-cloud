@@ -94,7 +94,6 @@ def get_cloud_domain(stack_fqdn):
     raise Exception(f"Could not identify cloud domain for {stack_fqdn}")
 
 
-
 # returns the inventory containing all hosts of a pve cloud domain
 # either from local inv file or via avahi
 def get_pve_inventory(
