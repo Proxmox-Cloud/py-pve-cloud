@@ -73,7 +73,8 @@ def get_cloud_dyn_inv_path():
     return os.path.expanduser("~/.pve-cloud-dyn-inv.yaml")
 
 
-def get_cloud_domain(target_pve):
+# stack fqdn can be any stack fdqn, of single stacks or target_pve
+def get_cloud_domain(stack_fqdn):
     inv_path = get_cloud_dyn_inv_path()
     if os.path.exists(inv_path):
         with open(inv_path, "r") as f:
@@ -82,16 +83,16 @@ def get_cloud_domain(target_pve):
         validate_cloud_dyn_inv(pve_inventory)
 
         for pve_cloud in pve_inventory:
-            for pve_cluster in pve_inventory[pve_cloud]:
-                if pve_cluster + "." + pve_cloud == target_pve:
-                    return pve_cloud
+            if stack_fqdn.endswith(pve_cloud):
+                return pve_cloud
 
     if shutil.which("avahi-browse"):
         for service in get_avahi_iterator():
-            if target_pve.endswith(service.cloud_domain):
+            if stack_fqdn.endswith(service.cloud_domain):
                 return service.cloud_domain
 
-    raise Exception(f"Could not identify cloud domain for {target_pve}")
+    raise Exception(f"Could not identify cloud domain for {stack_fqdn}")
+
 
 
 # returns the inventory containing all hosts of a pve cloud domain
