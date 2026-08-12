@@ -17,7 +17,7 @@ dependencies = [
   "rpyc==6.0.2",
   "fabric==3.2.3",
   "asyncssh==2.22.0",
-  "pve-cloud-schemas>=3.2.3,<3.3.0"
+  "pve-cloud-schemas>=3.2.4,<3.3.0"
 ]
 dynamic = ["version"]
 
