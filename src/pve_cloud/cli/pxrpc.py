@@ -138,7 +138,6 @@ class PxrpcService(rpyc.Service):
     def shutdown(self):
         os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
 
-
     def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None):
         super().__init__()
 
@@ -158,7 +157,6 @@ class PxrpcService(rpyc.Service):
             self.patroni_cstr = self._get_pg_conn_str(
                 self.cluster_vars
             )  # we need postgres for almost anything
-
 
     # return initted cluster vars
     @rpyc.exposed
