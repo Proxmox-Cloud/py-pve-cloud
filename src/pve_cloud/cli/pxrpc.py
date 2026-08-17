@@ -8,11 +8,11 @@ import socket
 import subprocess
 import sys
 import time
-import asyncssh
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
 
+import asyncssh
 import dns.rcode
 import dns.resolver
 import dns.tsigkeyring
