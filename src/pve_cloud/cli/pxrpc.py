@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import time
+import asyncssh
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
@@ -606,3 +607,56 @@ async def launch_pxrpc_async(
                 list(
                     pool.map(exit_worker, range(NUM_WORKERS))
                 )  # list/() is critical to yield the generator
+
+
+# make methods async callable for generic invoke
+# this is so we can call pxrpc methods generically for a locally
+# initialized instance
+class PxrpcAsyncWrapper:
+
+    def __init__(self, pxservice):
+        self.pxservice = pxservice
+
+    def __getattr__(self, method_name):
+        async def async_wrapper(*args, **kwargs):
+            return getattr(self.pxservice, method_name)(*args, **kwargs)
+
+        return async_wrapper
+
+
+async def get_cstr_cvars(online_pve_host):
+    async with asyncssh.connect(
+        online_pve_host, username="root", known_hosts=None
+    ) as conn:
+        cmd = await conn.run("cat /etc/pve/cloud/secrets/patroni.pass", check=True)
+        patroni_pass = cmd.stdout.rstrip()
+
+        # fetch cluster vars to get internal proxy ip
+        cmd = await conn.run("cat /etc/pve/cloud/cluster_vars.yaml", check=True)
+        cluster_vars = yaml.safe_load(cmd.stdout)
+        validate_cluster_vars(cluster_vars)
+
+        cmd = await conn.run("cat /etc/pve/cloud/secrets/internal.key", check=True)
+        internal_key = re.search(r'secret\s+"([^"]+)";', cmd.stdout).group(1)
+
+    # build the connection string
+    patroni_cstr = f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
+
+    return patroni_cstr, cluster_vars, internal_key
+
+
+# pve cloud context aware async get function for the pxrpc functions.
+# this will either return a local wrapper or a remotely launched instance
+# of our pxrpc service. This serves as a generic function launch endpoint
+# to be able to interact with a proxmox cloud, regardless of configuration
+# (local access / remote via jump host). This currently only exists as an async
+# implementation.
+@asynccontextmanager
+async def get_simple_pxrpc(online_pve_host, jump_host):
+    if not jump_host:
+        cstr, cluster_vars, internal_key = await get_cstr_cvars(online_pve_host)
+        yield PxrpcAsyncWrapper(PxrpcService(cluster_vars, cstr, internal_key))
+        return
+
+    async with launch_pxrpc_async(jump_host, online_pve_host) as pxrpc:
+        yield pxrpc
