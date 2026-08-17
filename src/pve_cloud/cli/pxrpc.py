@@ -96,8 +96,9 @@ class RemoteProxmoxApi(rpyc.Service):
 @rpyc.service
 class PxrpcService(rpyc.Service):
 
-    # functions for constructor
-    def get_cluster_vars(self):
+    # functions for constructor, only for when the service is launched
+    # as a real remote service on a proxmox host!
+    def _get_cluster_vars(self):
         result_vars = subprocess.run(
             ["cat", "/etc/pve/cloud/cluster_vars.yaml"],
             capture_output=True,
@@ -109,7 +110,7 @@ class PxrpcService(rpyc.Service):
 
         return cluster_vars
 
-    def get_pg_conn_str(self, cluster_vars):
+    def _get_pg_conn_str(self, cluster_vars):
         # needs to be cat because of proxmox fs
         result_pass = subprocess.run(
             ["cat", "/etc/pve/cloud/secrets/patroni.pass"],
@@ -121,7 +122,7 @@ class PxrpcService(rpyc.Service):
 
         return f"postgresql+psycopg2://postgres:{patroni_pass}@{cluster_vars['pve_haproxy_floating_ip_internal']}:5000/pve_cloud?sslmode=disable"
 
-    def get_internal_bind_key(self):
+    def _get_internal_bind_key(self):
         result_key = subprocess.run(
             ["cat", "/etc/pve/cloud/secrets/internal.key"],
             capture_output=True,
@@ -131,36 +132,46 @@ class PxrpcService(rpyc.Service):
 
         return re.search(r'secret\s+"([^"]+)";', result_key.stdout).group(1)
 
+    # rpyc doesnt have a clean shutdown methodology
+    # this is the cleanest i found without triggerin eof on the clients side
+    @rpyc.exposed
+    def shutdown(self):
+        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
+
+
     def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None):
         super().__init__()
 
         if cluster_vars:
             self.cluster_vars = cluster_vars
         else:
-            self.cluster_vars = self.get_cluster_vars()
+            self.cluster_vars = self._get_cluster_vars()
 
         if internal_bind_key:
             self.internal_bind_key = internal_bind_key
         else:
-            self.internal_bind_key = self.get_internal_bind_key()
+            self.internal_bind_key = self._get_internal_bind_key()
 
         if patroni_cstr:
             self.patroni_cstr = patroni_cstr
         else:
-            self.patroni_cstr = self.get_pg_conn_str(
+            self.patroni_cstr = self._get_pg_conn_str(
                 self.cluster_vars
             )  # we need postgres for almost anything
 
+
+    # return initted cluster vars
+    @rpyc.exposed
+    def get_cluster_vars(self):
+        return self.cluster_vars
+
+    # after initialization these functions can be called from anywhere
+    # either via the local wrapper on cloud connecitons that are not tunneled
+    # via a jump host, and also for true remote launches.
     @rpyc.exposed
     def e2e_return(self):
         print(f"e2e return on pid {os.getpid()}")
         return self.patroni_cstr
-
-    # rpyc doesnt have a clean shutdown methodology
-    # this is the cleanest i found without triggerin eof on the clients side
-    @rpyc.exposed
-    def shutdown(self):
-        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
 
     @rpyc.exposed
     def resolve_k8s_master(self, nameservers, a_rs_hostname):
