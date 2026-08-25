@@ -11,6 +11,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
+from rpyc.utils.helpers import classpartial
 
 import asyncssh
 import dns.rcode
@@ -31,37 +32,21 @@ from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
 
 
+# when this service is run remotely you can debug / view its logs easily running
+# `journalctl -u pxrpc-service.slice` (this lets you view the logs of all instances)
+
 # services need to implement the shutdown function
 class PxServiceEnum(StrEnum):
     PXRPC = "PXRPC"
     PROXMOXER = "PROXMOXER"
 
 
-# initialized / launched by pvcli connect_remote_cluster
-# it is launched on a proxmox host
-
-# todo: it would be nice to have some generic exception handeling / wrapping and passing down to the
-# rpyc clients for printing. like a wrapping RPycException class and general implcit try catch + handeling
-# on terraform-provider-pxc unpacking
-
-# we once get the master pid, this is needed for the forkingserver
-# todo: probably not the best way for ipc shutdown, maybe use pipes?
-MASTER_PID = os.getpid()
-
-
-def shutdown_handler(signum, frame):
-    # wait a few seconds so clients can gracefully disconnect
-    time.sleep(5)
-
-    # kill the entire process and all forks
-    os.killpg(os.getpgrp(), signal.SIGKILL)
-
-
 @rpyc.service
 class RemoteProxmoxApi(rpyc.Service):
 
-    def __init__(self):
+    def __init__(self, port):
         super().__init__()
+        self.port = port # port as transient id for systemctl shutdown
 
         # init services required by most functions
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
@@ -70,10 +55,17 @@ class RemoteProxmoxApi(rpyc.Service):
     # this is the cleanest i found without triggerin eof on the clients side
     @rpyc.exposed
     def shutdown(self):
-        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
+        subprocess.Popen(
+            [
+                "sh", "-c",
+                f"sleep 5; systemctl stop pxrpc-service-{self.port}.service",
+            ],
+            start_new_session=True,
+        )
 
     @rpyc.exposed
     def get_pve_cluster_name(self):
+
         # try get the cluster name
         cluster_name = None
         status_resp = self.proxmox.cluster.status.get()
@@ -136,10 +128,21 @@ class PxrpcService(rpyc.Service):
     # this is the cleanest i found without triggerin eof on the clients side
     @rpyc.exposed
     def shutdown(self):
-        os.kill(MASTER_PID, signal.SIGTERM)  # this triggers the shutdown handler
+        if not self.port:
+            raise RuntimeError("Remote shutdown function called on instane initialized without id port!")
 
-    def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None):
+        subprocess.Popen(
+            [
+                "sh", "-c",
+                f"sleep 5; systemctl stop pxrpc-service-{self.port}.service",
+            ],
+            start_new_session=True,
+        )
+
+    def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None, port=None):
         super().__init__()
+
+        self.port = port # port serves as id for systemctl transient service shutdown
 
         if cluster_vars:
             self.cluster_vars = cluster_vars
@@ -239,7 +242,7 @@ class PxrpcService(rpyc.Service):
                 session.commit()
                 return True
 
-            except IntegrityError as e:
+            except IntegrityError:
                 session.rollback()
                 return False
 
@@ -387,16 +390,13 @@ def main():
 
     print("launching on", sys.argv[1], sys.argv[2], sys.argv[3])
 
-    # register handler in master thread / process
-    signal.signal(signal.SIGTERM, shutdown_handler)
-
     service_to_launch = None
     match PxServiceEnum(sys.argv[3]):
         # here custom inits could take place (using classpartial / constructor)
         case PxServiceEnum.PXRPC:
-            service_to_launch = PxrpcService
+            service_to_launch = classpartial(PxrpcService, port=int(sys.argv[1]))
         case PxServiceEnum.PROXMOXER:
-            service_to_launch = RemoteProxmoxApi
+            service_to_launch = classpartial(RemoteProxmoxApi, port=int(sys.argv[1]))
 
     # launch it threaded for sync (easy tasks no paralellism)
     if sys.argv[2] == "THREADED":
@@ -460,8 +460,8 @@ def _launch_pxrpc_base(
             print("open port remote", open_port_remote)
 
             # run detached pxrpc server - we use this to execute python code remotely on the jump host
-            # pkill -f pxrpc to cleanup
-            pxrpc_cmd = f"export PYTHONUNBUFFERED=1; /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} {rpyc_service} >> /var/log/pxrpc-{open_port_remote}.log 2>&1"
+            # `pkill -f pxrpc` to cleanup, `journalctl -u pxrpc-service.slice` to view logs
+            pxrpc_cmd = f"systemd-run --unit=pxrpc-service-{open_port_remote} --slice=pxrpc-service.slice /root/.pxc-venv/bin/pxrpc {open_port_remote} {rpyc_server_type} {rpyc_service}"
             print("pxrpc cmd", pxrpc_cmd)
             pve_host_conn.run(
                 pxrpc_cmd,
