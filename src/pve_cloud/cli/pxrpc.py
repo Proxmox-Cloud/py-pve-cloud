@@ -3,7 +3,6 @@ import json
 import multiprocessing
 import os
 import re
-import signal
 import socket
 import subprocess
 import sys
@@ -11,7 +10,6 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from enum import StrEnum
-from rpyc.utils.helpers import classpartial
 
 import asyncssh
 import dns.rcode
@@ -24,6 +22,7 @@ import yaml
 from fabric import Connection
 from proxmoxer import ProxmoxAPI
 from pve_cloud_schemas.validate import validate_cluster_vars
+from rpyc.utils.helpers import classpartial
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -31,9 +30,9 @@ from sqlalchemy.orm import Session
 from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
                                    VirtualMachineVars)
 
-
 # when this service is run remotely you can debug / view its logs easily running
 # `journalctl -u pxrpc-service.slice` (this lets you view the logs of all instances)
+
 
 # services need to implement the shutdown function
 class PxServiceEnum(StrEnum):
@@ -46,7 +45,7 @@ class RemoteProxmoxApi(rpyc.Service):
 
     def __init__(self, port):
         super().__init__()
-        self.port = port # port as transient id for systemctl shutdown
+        self.port = port  # port as transient id for systemctl shutdown
 
         # init services required by most functions
         self.proxmox = ProxmoxAPI("127.0.0.1", user="root", backend="ssh_paramiko")
@@ -57,7 +56,8 @@ class RemoteProxmoxApi(rpyc.Service):
     def shutdown(self):
         subprocess.Popen(
             [
-                "sh", "-c",
+                "sh",
+                "-c",
                 f"sleep 5; systemctl stop pxrpc-service-{self.port}.service",
             ],
             start_new_session=True,
@@ -129,20 +129,25 @@ class PxrpcService(rpyc.Service):
     @rpyc.exposed
     def shutdown(self):
         if not self.port:
-            raise RuntimeError("Remote shutdown function called on instane initialized without id port!")
+            raise RuntimeError(
+                "Remote shutdown function called on instane initialized without id port!"
+            )
 
         subprocess.Popen(
             [
-                "sh", "-c",
+                "sh",
+                "-c",
                 f"sleep 5; systemctl stop pxrpc-service-{self.port}.service",
             ],
             start_new_session=True,
         )
 
-    def __init__(self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None, port=None):
+    def __init__(
+        self, cluster_vars=None, patroni_cstr=None, internal_bind_key=None, port=None
+    ):
         super().__init__()
 
-        self.port = port # port serves as id for systemctl transient service shutdown
+        self.port = port  # port serves as id for systemctl transient service shutdown
 
         if cluster_vars:
             self.cluster_vars = cluster_vars
