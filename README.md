@@ -2,6 +2,48 @@
 
 This is the core python library package that serves as a foundation for pve cloud.
 
+## CLI Entry Points
+
+The package provides three command-line interfaces installed as entry points:
+
+### pvclu - PVE Cloud Utility
+
+Main CLI tool for PVE Cloud operations including cluster management, inventory queries, and administrative tasks.
+
+```bash
+# View available commands
+pvclu --help
+
+# Connect to a PVE cluster
+pvclu connect-cluster --pve-host <host> --pve-cloud-domain <domain>
+
+# Connect to a remote cluster via jump host
+pvclu connect-remote-cluster --jump-host <jump-host> --pve-host <host> --pve-cloud-domain <domain>
+```
+
+### pvcli - PVE Cloud CLI
+
+Secondary CLI interface for specialized PVE Cloud operations.
+
+```bash
+# View available commands
+pvcli --help
+```
+
+### pxrpc - PVE Remote Procedure Call
+
+RPC client for executing commands remotely on PVE Cloud infrastructure. Supports both synchronous and asynchronous execution.
+
+```bash
+# View available commands
+pxrpc --help
+
+# Launch remote procedure calls through jump hosts
+pxrpc <jump-host> <target-host> [options]
+```
+
+**Usage in Tests**: The PXRPC functionality is extensively tested in e2e tests (`pve_cloud/tests/e2e/test_cloud.py::test_pxrpc_tunnel`), validating both sync and async execution patterns, parallelism, and jump host tunneling.
+
 ## Alembic orm
 
 This project uses sqlalchemy + alembic integrated into the collection for management of the patroni database schema.
