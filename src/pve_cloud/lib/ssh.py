@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, contextmanager
 import asyncssh
 import paramiko
 from asyncssh.misc import ChannelOpenError
+from weakref import WeakKeyDictionary
 
 # jump host connection cache
 _jump_hosts = {}
@@ -174,8 +175,17 @@ async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
 
 # semaphore to limit ssh open port check concurrency
 # on larger clusters the proxmox host ssh services will time us out
-# without this
-_open_check_semaphore = asyncio.Semaphore(3)
+# without this. this needs to be created per event loop
+_oc_semaphores = WeakKeyDictionary()
+
+
+def _get_open_check_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    sem = _oc_semaphores.get(loop)
+    if sem is None:
+        sem = asyncio.Semaphore(3)
+        _oc_semaphores[loop] = sem
+    return sem
 
 
 async def check_ssh_open_async(check_host: str, jump_host: str = None):
@@ -188,7 +198,7 @@ async def check_ssh_open_async(check_host: str, jump_host: str = None):
         jump_host_conn = await get_jump_host_async(jump_host)
 
     try:
-        async with _open_check_semaphore:
+        async with _get_open_check_semaphore():
             if jump_host_conn:
                 reader, writer = await asyncio.wait_for(
                     jump_host_conn.open_connection(check_host, 22), timeout=2
@@ -230,7 +240,7 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
     while retries < max_retries:
         for ssh_port in ports:
             try:
-                async with _open_check_semaphore:
+                async with _get_open_check_semaphore():
                     if jump_host_conn:
                         reader, writer = await asyncio.wait_for(
                             jump_host_conn.open_connection(ip, ssh_port), timeout=1
