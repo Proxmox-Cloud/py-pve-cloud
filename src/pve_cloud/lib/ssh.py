@@ -172,6 +172,12 @@ async def get_jump_host_async(jump_host: str = None, jump_user: str = "root"):
         return _async_jumphosts[jump_host]
 
 
+# semaphore to limit ssh open port check concurrency
+# on larger clusters the proxmox host ssh services will time us out
+# without this
+_open_check_semaphore = asyncio.Semaphore(3)
+
+
 async def check_ssh_open_async(check_host: str, jump_host: str = None):
     cache_open = get_open_ssh_from_cache(check_host)
     if cache_open is not None:
@@ -182,22 +188,23 @@ async def check_ssh_open_async(check_host: str, jump_host: str = None):
         jump_host_conn = await get_jump_host_async(jump_host)
 
     try:
-        if jump_host_conn:
-            reader, writer = await asyncio.wait_for(
-                jump_host_conn.open_connection(check_host, 22), timeout=2
-            )
-        else:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(check_host, 22), timeout=2
-            )
+        async with _open_check_semaphore:
+            if jump_host_conn:
+                reader, writer = await asyncio.wait_for(
+                    jump_host_conn.open_connection(check_host, 22), timeout=2
+                )
+            else:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(check_host, 22), timeout=2
+                )
 
-        await asyncio.wait_for(reader.readline(), timeout=3)
+            await asyncio.wait_for(reader.readline(), timeout=3)
 
-        writer.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
-        await writer.drain()
+            writer.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
+            await writer.drain()
 
-        writer.close()
-        await writer.wait_closed()
+            writer.close()
+            await writer.wait_closed()
 
         set_open_ssh_cache(check_host, True)
         return True
@@ -223,21 +230,22 @@ async def wait_for_ssh_open_async(ip, jump_host: str = None):
     while retries < max_retries:
         for ssh_port in ports:
             try:
-                if jump_host_conn:
-                    reader, writer = await asyncio.wait_for(
-                        jump_host_conn.open_connection(ip, ssh_port), timeout=1
-                    )
-                else:
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection(ip, ssh_port), timeout=1
-                    )
-                await asyncio.wait_for(reader.readline(), timeout=3)
+                async with _open_check_semaphore:
+                    if jump_host_conn:
+                        reader, writer = await asyncio.wait_for(
+                            jump_host_conn.open_connection(ip, ssh_port), timeout=1
+                        )
+                    else:
+                        reader, writer = await asyncio.wait_for(
+                            asyncio.open_connection(ip, ssh_port), timeout=1
+                        )
+                    await asyncio.wait_for(reader.readline(), timeout=3)
 
-                writer.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
-                await writer.drain()
+                    writer.write(b"SSH-2.0-PxcOnlineCheck_1.0\r\n")
+                    await writer.drain()
 
-                writer.close()
-                await writer.wait_closed()
+                    writer.close()
+                    await writer.wait_closed()
 
                 return ssh_port
             except (
