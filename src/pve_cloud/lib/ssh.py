@@ -3,11 +3,11 @@ import atexit
 import socket
 import threading
 from contextlib import asynccontextmanager, contextmanager
+from weakref import WeakKeyDictionary
 
 import asyncssh
 import paramiko
 from asyncssh.misc import ChannelOpenError
-from weakref import WeakKeyDictionary
 
 # jump host connection cache
 _jump_hosts = {}
