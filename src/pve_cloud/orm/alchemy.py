@@ -89,6 +89,7 @@ class VirtualMachineVars(Base):
   cloud_domain = Column(String(253), primary_key=True)
   blake_id = Column(String(50), primary_key=True)
   vm_vars = Column(JSONB, nullable=False)
+  self_params = Column(JSONB, nullable=False)
 
 
 # is also used for configuration and dynamic discovery
@@ -187,4 +188,3 @@ def alch_delete(conn_str, table_name, where_equal_args):
   with engine.begin() as conn: 
     result = conn.execute(stmt)
     return result.rowcount
-  
