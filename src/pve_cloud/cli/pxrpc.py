@@ -312,7 +312,15 @@ class PxrpcService(rpyc.Service):
             )
             records = session.scalars(stmt).all()
 
-        vars_json = json.dumps({entry.blake_id: {"vm_vars": entry.vm_vars, "self_params": entry.self_params} for entry in records})
+        vars_json = json.dumps(
+            {
+                entry.blake_id: {
+                    "vm_vars": entry.vm_vars,
+                    "self_params": entry.self_params,
+                }
+                for entry in records
+            }
+        )
         return vars_json
 
     @rpyc.exposed
