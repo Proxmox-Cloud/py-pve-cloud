@@ -27,8 +27,8 @@ from sqlalchemy import create_engine, delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudSecrets,
-                                   VirtualMachineVars, ProxmoxCloudInventory)
+from pve_cloud.orm.alchemy import (AcmeX509, ProxmoxCloudInventory,
+                                   ProxmoxCloudSecrets, VirtualMachineVars)
 
 # when this service is run remotely you can debug / view its logs easily running
 # `journalctl -u pxrpc-service.slice` (this lets you view the logs of all instances)
@@ -336,14 +336,9 @@ class PxrpcService(rpyc.Service):
             )
             records = session.scalars(stmt).all()
 
-        invs_json = json.dumps(
-            {
-                entry.stack_name: entry.inventory
-                for entry in records
-            }
-        )
+        invs_json = json.dumps({entry.stack_name: entry.inventory for entry in records})
         return invs_json
-    
+
     @rpyc.exposed
     def get_dns_a_record(self, host):
         # get nameservers of the cloud (global in all cluster vars defined)
