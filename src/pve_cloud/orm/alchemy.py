@@ -88,8 +88,20 @@ class VirtualMachineVars(Base):
 
   cloud_domain = Column(String(253), primary_key=True)
   blake_id = Column(String(50), primary_key=True)
+
+  stack_name = Column(String(253), nullable=False, index=True)
   vm_vars = Column(JSONB, nullable=False)
   self_params = Column(JSONB, nullable=False)
+
+
+# inventory files for reflection logic loaded into the database
+class ProxmoxCloudInventory(Base):
+  __tablename__ = "pxc_inventory"
+
+  cloud_domain = Column(String(253), primary_key=True)
+  stack_name = Column(String(253), primary_key=True)
+
+  inventory = Column(JSONB, nullable=False)
 
 
 # is also used for configuration and dynamic discovery
